@@ -1,0 +1,4 @@
+openai>=1.79.0
+rich 
+pprint
+datasets
