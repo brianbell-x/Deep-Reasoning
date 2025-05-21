@@ -344,6 +344,7 @@ Ensure each plan step is an actionable item for a separate Thinking Agent. The T
 
 # Removed "step by step" from the instructions
 # Added New Exploration Strategies and Json output
+# TODO: Create and use Pydantic models for the output
 
 THINKER_INSTRUCTIONS = """
 ## Goal/Task
@@ -408,6 +409,7 @@ Return a JSON object with the following keys:
 Be objective and constructive. Do NOT use numerical scoring. Focus on descriptive, qualitative evaluation. If `verdict` is "Continue", ensure `guidance_for_next_planner_iteration` is specific enough to drive meaningful changes in the next plan.
 """
 # TODO: when created, the reviewer should have knowledge of the thinking algorithms so that I can provide feedback on the thinking process or propose a new strategy.
+# TODO: Create and use Pydantic models for the output
 
 SYNTHESIZER_INSTRUCTIONS = """
 ## Goal/Task

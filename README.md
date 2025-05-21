@@ -1,6 +1,6 @@
 # Deep-Thinking
 
-This project aims to develop a system of AI agents capable of iterative, reflective, and multi-path problem-solving and idea generation. This system is designed to move beyond simple prompt-response interactions or basic agentic loops, enabling a more profound and structured approach to tackling complex tasks, particularly those that are not primarily search-intensive but require significant internal deliberation, strategic planning, and iterative refinement.
+Exploring the possibilty of making agents capable of iterative, reflective, and multi-path problem-solving, idea generation and question answering. To do this, I aim to design a system beyond simple prompt-response interactions or basic agentic loops, enabling a more profound and structured approach to tackling complex tasks, particularly those that are not primarily search intensive but require significant internal deliberation, strategic planning, and iterative refinement.
 
 My original thoughts on this were:
 

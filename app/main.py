@@ -1,7 +1,6 @@
 import os
 import sys
 import json
-from openai import OpenAI
 import dotenv
 
 from app.instructions import (
@@ -10,24 +9,9 @@ from app.instructions import (
     REVIEWER_INSTRUCTIONS,
     SYNTHESIZER_INSTRUCTIONS,
 )
+from app.client import DeepThinkingAPIClient
 
 dotenv.load_dotenv()
-
-# === Cost tracking (o4-mini USD per token) ===
-_O4_IN_RATE    = 1.10   / 1_000_000
-_O4_CACHE_RATE = 0.275  / 1_000_000
-_O4_OUT_RATE   = 4.40   / 1_000_000
-TOTAL_COST_USD = 0.0
-
-def _accumulate_cost(resp):
-    """Update global TOTAL_COST_USD from resp.usage"""
-    global TOTAL_COST_USD
-    u = getattr(resp, "usage", None) or {}
-    cached = u.get("input_tokens_details", {}).get("cached_tokens", 0)
-    inp    = u.get("input_tokens", 0)
-    outp   = u.get("output_tokens", 0)
-    cost   = ((inp - cached) * _O4_IN_RATE) + (cached * _O4_CACHE_RATE) + (outp * _O4_OUT_RATE)
-    TOTAL_COST_USD += cost
 
 class PlannerAgent:
     def __init__(self, client, model):
@@ -45,13 +29,11 @@ class PlannerAgent:
             )
         user_prompt = "\n".join(prompt_parts)
 
-        response = self.client.responses.create(
-            model=self.model,
-            instructions=self.INSTRUCTIONS,
-            input=user_prompt,
-            text={"format": {"type": "json_object"}}
+        response = self.client.planner_call(
+            self.model,
+            self.INSTRUCTIONS,
+            user_prompt
         )
-        _accumulate_cost(response)
         print("\n[PlannerAgent]: Generating Exploration Plan...")
         content = response.output_text
         try:
@@ -77,12 +59,11 @@ class ThinkerAgent:
             )
         user_prompt = "\n".join(prompt_parts)
 
-        response = self.client.responses.create(
-            model=self.model,
-            instructions=self.INSTRUCTIONS,
-            input=user_prompt
+        response = self.client.thinker_call(
+            self.model,
+            self.INSTRUCTIONS,
+            user_prompt
         )
-        _accumulate_cost(response)
         return (response.output_text).strip()
 
 class ReviewerAgent:
@@ -106,13 +87,11 @@ class ReviewerAgent:
         ]
         user_prompt = "\n".join(prompt_parts)
 
-        response = self.client.responses.create(
-            model=self.model,
-            instructions=self.INSTRUCTIONS,
-            input=user_prompt,
-            text={"format": {"type": "json_object"}}
+        response = self.client.reviewer_call(
+            self.model,
+            self.INSTRUCTIONS,
+            user_prompt
         )
-        _accumulate_cost(response)
         print("\n[ReviewerAgent]: Evaluating progress...")
         content = response.output_text
         try:
@@ -154,18 +133,17 @@ class SynthesizerAgent:
         ]
         user_prompt = "\n".join(prompt_parts)
 
-        response = self.client.responses.create(
-            model=self.model,
-            instructions=self.INSTRUCTIONS,
-            input=user_prompt
+        response = self.client.synthesizer_call(
+            self.model,
+            self.INSTRUCTIONS,
+            user_prompt
         )
-        _accumulate_cost(response)
         print("\n[SynthesizerAgent]: Generating Final Solution...")
         return (response.output_text).strip()
 
 class DeepThinkingPipeline:
     def __init__(self, api_key):
-        self.client = OpenAI(api_key=api_key)
+        self.client = DeepThinkingAPIClient(api_key=api_key)
         strong_model = "o4-mini"
         capable_model = "o4-mini"
         self.planner = PlannerAgent(self.client, strong_model)
@@ -223,7 +201,7 @@ class DeepThinkingPipeline:
         if not full_history:
             return "Error: No history was generated (e.g., initial planner failure)."
 
-        print(f"\n--- Total model cost: ${TOTAL_COST_USD:.4f} ---")
+        print(f"\n--- Total model cost: ${self.client.total_cost():.4f} ---")
         return self.synthesizer.synthesize(main_task, full_history)
 
 if __name__ == "__main__":
