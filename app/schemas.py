@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Literal
 from pydantic import BaseModel, model_validator
 
 # ──────────────────────────────
@@ -40,6 +40,26 @@ class ContextSelection(BaseModel):
     plan_id: str
     step_ids: List[str]
 
+class NextIterationGuidance(BaseModel):
+    action: Literal[
+        "DEEPEN",
+        "BROADEN",
+        "CONTINUE_DFS_PATH",
+        "RETRY_STEP_WITH_MODIFICATION",
+        "HALT_SUFFICIENT",
+        "HALT_STAGNATION",
+        "HALT_NO_FEASIBLE_PATH"
+    ]
+    reasoning: str
+    target_plan_id: Optional[str] = None
+    target_step_id: Optional[str] = None
+    suggested_modifications_or_focus: Optional[str] = None
+    excluded_strategies: Optional[List[str]] = None
+    new_strategy_suggestion: Optional[str] = None
+    current_dfs_path_summary: Optional[str] = None
+
 class ReviewerOut(BaseModel):
     assessment_of_current_iteration: str
+    is_sufficient_for_synthesis: bool
     context_to_use: Optional[List[ContextSelection]] = None
+    next_iteration_guidance: NextIterationGuidance
