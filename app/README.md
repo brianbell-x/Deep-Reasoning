@@ -1,8 +1,14 @@
-# Deep-Thinking (Gemini Edition)
+# Deep-Thinking
 
 ## Overview
 
-This project implements a multi-agent pipeline (Planner, Thinker, Reviewer, Synthesizer) using Google's Gemini API for all LLM calls, with structured outputs validated by Pydantic models.
+Exploring the possibilty of making agents capable of iterative, reflective, and multi-path problem-solving, idea generation and question answering. To do this, I aim to design a system beyond simple prompt-response interactions or basic agentic loops, enabling a more profound and structured approach to tackling complex tasks, particularly those that are not primarily search intensive but require significant internal deliberation, strategic planning, and iterative refinement.
+
+My original thoughts on this were:
+
+"Deep research agents are cool. But sometimes my task doesn't require a deep research report because it researches all related sites and generates a long report with my answer to the problem usually scattered throughout the report. Sometimes just I need a strong thinker, or path explorer that can think through possible solutions/scenarios and return the best one(s). Or to simply help me expand on an idea.I want this to handle tasks like engineering, design, etc. Things that don't need search but definitely needs exploration, reflection, ..."
+
+
 
 ## Setup
 
@@ -11,17 +17,16 @@ This project implements a multi-agent pipeline (Planner, Thinker, Reviewer, Synt
    ```
    pip install -r requirements.txt
    ```
-
 2. **Environment variables**
 
    - Set `GEMINI_API_KEY` in your `.env` file or environment.
    - For backward compatibility, `OPENAI_API_KEY` or `OPENROUTER_API_KEY` will be used if `GEMINI_API_KEY` is not set, but this is deprecated.
 
    Example `.env`:
+
    ```
    GEMINI_API_KEY=your-gemini-key-here
    ```
-
 3. **Run the pipeline**
 
    ```
