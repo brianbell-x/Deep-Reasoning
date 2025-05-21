@@ -1,7 +1,19 @@
 import os
 import sys
 import json
+from typing import Optional
 import dotenv
+
+class BColors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKCYAN = '\033[96m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
 
 from app.instructions import (
     PLANNER_INSTRUCTIONS,
@@ -9,7 +21,9 @@ from app.instructions import (
     REVIEWER_INSTRUCTIONS,
     SYNTHESIZER_INSTRUCTIONS,
 )
-from app.client import DeepThinkingAPIClient
+from app.client import GeminiAPIClient
+from app.schemas import PlannerOut, ReviewerOut
+from google.genai.types import Tool, GoogleSearch
 
 dotenv.load_dotenv()
 
@@ -19,29 +33,38 @@ class PlannerAgent:
         self.model = model
         self.INSTRUCTIONS = PLANNER_INSTRUCTIONS
 
-    def generate_plan(self, main_task, previous_review_guidance=None):
-        prompt_parts = [
-            f"<main_task>{main_task}</main_task>"
-        ]
+    def generate_plan(self, parent_task, previous_review_guidance=None):
+        prompt_parts = [f"<parent_task>{parent_task}</parent_task>"]
         if previous_review_guidance:
             prompt_parts.append(
                 f"<previous_review_guidance>{previous_review_guidance}</previous_review_guidance>"
             )
         user_prompt = "\n".join(prompt_parts)
 
-        response = self.client.planner_call(
-            self.model,
-            self.INSTRUCTIONS,
-            user_prompt
+        print(
+            f"\n{BColors.OKCYAN}[PlannerAgent]{BColors.ENDC} Instructions:\n"
+            f"{BColors.OKBLUE}{self.INSTRUCTIONS}{BColors.ENDC}"
         )
-        print("\n[PlannerAgent]: Generating Exploration Plan...")
-        content = response.output_text
+        print(
+            f"{BColors.OKCYAN}[PlannerAgent]{BColors.ENDC} User Prompt:\n"
+            f"{BColors.WARNING}{user_prompt}{BColors.ENDC}"
+        )
+
         try:
-            plan_data = json.loads(content)
-            return plan_data.get("exploration_plan", [])
-        except json.JSONDecodeError:
-            print("[PlannerAgent] Error: Could not decode JSON plan. Returning empty plan.")
+            response = self.client.planner_call(
+                self.model,
+                self.INSTRUCTIONS,
+                user_prompt,
+                schema=PlannerOut
+            )
+            print(f"\n{BColors.OKCYAN}[PlannerAgent]{BColors.ENDC}: Generating Exploration Plan...")
+            plans_to_print = [p.model_dump() for p in response.exploration_plans]
+            print(f"{BColors.OKGREEN}{json.dumps(plans_to_print, indent=2)}{BColors.ENDC}")
+            return response.exploration_plans
+        except Exception as e:
+            print(f"{BColors.FAIL}[PlannerAgent] Error: {e}. Returning empty plan.{BColors.ENDC}")
             return []
+
 
 class ThinkerAgent:
     def __init__(self, client, model):
@@ -49,22 +72,31 @@ class ThinkerAgent:
         self.model = model
         self.INSTRUCTIONS = THINKER_INSTRUCTIONS
 
-    def think(self, sub_task_description, main_task_context=None):
-        prompt_parts = [
-            f"<sub_task_description>{sub_task_description}</sub_task_description>"
-        ]
-        if main_task_context:
-            prompt_parts.append(
-                f"<main_task_context>{main_task_context}</main_task_context>"
-            )
+    def think(self, your_task_description: str, parent_task_context: Optional[str] = None):
+        prompt_parts = [f"<your_task_description>{your_task_description}</your_task_description>"]
+        if parent_task_context:
+            prompt_parts.append(f"<parent_task_context>{parent_task_context}</parent_task_context>")
         user_prompt = "\n".join(prompt_parts)
 
-        response = self.client.thinker_call(
-            self.model,
-            self.INSTRUCTIONS,
-            user_prompt
+        print(
+            f"\n{BColors.OKCYAN}[ThinkerAgent]{BColors.ENDC} Instructions:\n"
+            f"{BColors.OKBLUE}{self.INSTRUCTIONS}{BColors.ENDC}"
         )
-        return (response.output_text).strip()
+        print(
+            f"{BColors.OKCYAN}[ThinkerAgent]{BColors.ENDC} User Prompt:\n"
+            f"{BColors.WARNING}{user_prompt}{BColors.ENDC}"
+        )
+        tools_to_use = [Tool(google_search=GoogleSearch())]
+
+        response = self.client.thinker_call(
+            model=self.model,
+            instructions=self.INSTRUCTIONS,
+            user_prompt=user_prompt,
+            tools=tools_to_use
+        )
+        response_str = response.strip() if isinstance(response, str) else str(response)
+        print(f"{BColors.OKCYAN}[ThinkerAgent]{BColors.ENDC} Response:\n{BColors.OKGREEN}{response_str}{BColors.ENDC}")
+        return response_str
 
 class ReviewerAgent:
     def __init__(self, client, model):
@@ -72,33 +104,34 @@ class ReviewerAgent:
         self.model = model
         self.INSTRUCTIONS = REVIEWER_INSTRUCTIONS
 
-    def review(self, main_task, current_plan, current_results, iteration_count):
-        results_context_parts = []
-        for i, res in enumerate(current_results):
-            plan_step_context = current_plan[i] if i < len(current_plan) else "N/A (result out of sync with plan items)"
-            results_context_parts.append(f"Result for plan step \"{plan_step_context}\":\n{res}\n---")
-        results_context = "\n".join(results_context_parts)
-
+    def review(self, parent_task, current_plan, iteration_count):
         prompt_parts = [
-            f"<main_task>{main_task}</main_task>",
+            f"<parent_task>{parent_task}</parent_task>",
             f"<current_iteration>{iteration_count}</current_iteration>",
-            f"<current_plan>{json.dumps(current_plan, indent=2)}</current_plan>",
-            f"<results_for_current_plan>\n{results_context}\n</results_for_current_plan>"
+            f"<current_plan>{json.dumps([p.model_dump() for p in current_plan], indent=2)}</current_plan>"
         ]
         user_prompt = "\n".join(prompt_parts)
 
-        response = self.client.reviewer_call(
-            self.model,
-            self.INSTRUCTIONS,
-            user_prompt
-        )
-        print("\n[ReviewerAgent]: Evaluating progress...")
-        content = response.output_text
+        print(f"\n{BColors.OKCYAN}[ReviewerAgent]{BColors.ENDC} Instructions:\n{BColors.OKBLUE}{self.INSTRUCTIONS}{BColors.ENDC}")
+        print(f"{BColors.OKCYAN}[ReviewerAgent]{BColors.ENDC} User Prompt:\n{BColors.WARNING}{user_prompt}{BColors.ENDC}")
+
         try:
-            return json.loads(content)
-        except json.JSONDecodeError:
-            print("[ReviewerAgent] Error: Could not decode JSON review. Defaulting to REPLAN.")
-            return {"decision": "REPLAN", "guidance": "Reviewer output was not valid JSON. The next plan should aim for greater clarity, ensure all aspects of the main task are covered, and that each thinking step is sufficiently deep."}
+            response = self.client.reviewer_call(
+                self.model,
+                self.INSTRUCTIONS,
+                user_prompt,
+                schema=ReviewerOut
+            )
+            print(f"\n{BColors.OKCYAN}[ReviewerAgent]{BColors.ENDC}: Evaluating progress...")
+            dumped_response = response.model_dump()
+            print(f"{BColors.OKGREEN}{json.dumps(dumped_response, indent=2)}{BColors.ENDC}")
+            return dumped_response
+        except Exception as e:
+            print(f"{BColors.FAIL}[ReviewerAgent] Error: {e}. Defaulting to error assessment.{BColors.ENDC}")
+            return {
+                "assessment_of_current_iteration": "ERROR_IN_REVIEW_PROCESSING",
+                "context_to_use": None
+            }
 
 class SynthesizerAgent:
     def __init__(self, client, model):
@@ -106,121 +139,142 @@ class SynthesizerAgent:
         self.model = model
         self.INSTRUCTIONS = SYNTHESIZER_INSTRUCTIONS
 
-    def synthesize(self, main_task, full_history):
+    def synthesize(self, parent_task, full_history):
         history_summary_parts = []
+        context_to_use = None
+
         for i, cycle in enumerate(full_history):
             cycle_summary = f"--- Iteration {i+1} ---\n"
-            plan_steps = cycle.get('plan', ["N/A"])
-            cycle_summary += f"Plan Attempted: {json.dumps(plan_steps, indent=1)}\n"
-            results = cycle.get('results', [])
-            if results:
-                cycle_summary += "Key Insights/Results Snippets:\n"
-                for j, res in enumerate(results):
-                    plan_step_context = plan_steps[j] if j < len(plan_steps) else "N/A"
-                    res_snippet = (res[:200] + '...') if len(res) > 203 else res
-                    cycle_summary += f"  - For plan step '{plan_step_context}': {res_snippet}\n"
+            plans_with_responses = cycle.get('plans_with_responses', ["N/A"])
+            # Serialize Pydantic models for JSON
+            plans_json = json.dumps(
+                [getattr(p, "model_dump", lambda: p)() for p in plans_with_responses],
+                indent=1
+            )
+            if len(plans_json) > 1000:
+                plans_json = plans_json[:1000] + "...(truncated)"
+            cycle_summary += f"Plans & Responses: {plans_json}\n"
+
             review = cycle.get('review', {})
-            cycle_summary += f"Review Decision for this Iteration: {review.get('decision', 'N/A')}\n"
-            if review.get('decision') == "REPLAN" and review.get('guidance'):
-                cycle_summary += f"Guidance that shaped subsequent planning: {review.get('guidance', 'N/A')[:200]}...\n"
+            cycle_summary += f"Review Assessment for this Iteration: {review.get('assessment_of_current_iteration', 'N/A')}\n"
+
+            # Save context_to_use from the last iteration's review
+            if i == len(full_history) - 1:
+                context_to_use = review.get("context_to_use")
+
             history_summary_parts.append(cycle_summary)
 
         full_history_summary_for_prompt = "\n".join(history_summary_parts)
 
         prompt_parts = [
-            f"<main_task>{main_task}</main_task>",
+            f"<parent_task>{parent_task}</parent_task>",
             f"<full_history_summary>\n{full_history_summary_for_prompt}\n</full_history_summary>"
         ]
+
+        if context_to_use:
+            selected_responses_parts = ["<selected_step_responses>"]
+            all_step_responses = {}
+            for cycle_data in full_history:
+                for plan_obj in cycle_data.get('plans_with_responses', []):
+                    for step_obj in getattr(plan_obj, "steps", []):
+                        key = (getattr(plan_obj, "plan_id", None), getattr(step_obj, "step_id", None))
+                        all_step_responses[key] = getattr(step_obj, "response", None) or "N/A"
+
+            for selection_group in context_to_use:
+                plan_id = selection_group.get('plan_id')
+                for step_id in selection_group.get('step_ids', []):
+                    response_text = all_step_responses.get(
+                        (plan_id, step_id),
+                        "Response not found for this step in history."
+                    )
+                    selected_responses_parts.append(
+                        f"<step_response plan_id='{plan_id}' step_id='{step_id}'>\n{response_text}\n</step_response>"
+                    )
+
+            selected_responses_parts.append("</selected_step_responses>")
+            if len(selected_responses_parts) > 2:
+                prompt_parts.append("\n".join(selected_responses_parts))
+
         user_prompt = "\n".join(prompt_parts)
+
+        print(f"\n{BColors.OKCYAN}[SynthesizerAgent]{BColors.ENDC} Instructions:\n{BColors.OKBLUE}{self.INSTRUCTIONS}{BColors.ENDC}")
+        print(f"{BColors.OKCYAN}[SynthesizerAgent]{BColors.ENDC} User Prompt:\n{BColors.WARNING}{user_prompt}{BColors.ENDC}")
 
         response = self.client.synthesizer_call(
             self.model,
             self.INSTRUCTIONS,
             user_prompt
         )
-        print("\n[SynthesizerAgent]: Generating Final Solution...")
-        return (response.output_text).strip()
+        print(f"\n{BColors.OKCYAN}[SynthesizerAgent]{BColors.ENDC}: Generating Final Solution...")
+        print(f"{BColors.OKGREEN}{response.strip()}{BColors.ENDC}")
+        return response.strip()
+
 
 class DeepThinkingPipeline:
     def __init__(self, api_key):
-        self.client = DeepThinkingAPIClient(api_key=api_key)
-        strong_model = "o4-mini"
-        capable_model = "o4-mini"
-        self.planner = PlannerAgent(self.client, strong_model)
-        self.thinker = ThinkerAgent(self.client, capable_model)
-        self.reviewer = ReviewerAgent(self.client, strong_model)
-        self.synthesizer = SynthesizerAgent(self.client, strong_model)
+        self.client = GeminiAPIClient(api_key=api_key)
+        model = "gemini-2.5-flash-preview-05-20"
+        self.planner = PlannerAgent(self.client, model)
+        self.thinker = ThinkerAgent(self.client, model)
+        self.reviewer = ReviewerAgent(self.client, model)
+        self.synthesizer = SynthesizerAgent(self.client, model)
 
-    def run(self, main_task):
+    def run(self, parent_task):
         full_history = []
         previous_review_guidance = None
         current_iteration = 0
 
         while True:
             current_iteration += 1
-            print(f"\n--- Starting Iteration {current_iteration} ---")
 
-            exploration_plan_steps = self.planner.generate_plan(main_task, previous_review_guidance)
+            exploration_plans = self.planner.generate_plan(parent_task, previous_review_guidance)
+            previous_review_guidance = None  # Reset as reviewer no longer provides it
 
-            if not exploration_plan_steps:
-                print("[Pipeline] Planner returned an empty plan. This might indicate an issue or that the previous guidance suggested no further steps.")
+            if not exploration_plans:
+                print(f"{BColors.FAIL}[Pipeline] Planner returned an empty plan. This might indicate an issue.{BColors.ENDC}")
                 if not full_history:
-                    return "Error: Planner failed to generate an initial plan and there's no history."
-                print("[Pipeline] Proceeding to synthesize with available history as no new plan was generated.")
+                    return f"{BColors.FAIL}Error: Planner failed to generate an initial plan and there's no history.{BColors.ENDC}"
+                print(f"{BColors.OKCYAN}[Pipeline]{BColors.ENDC} Proceeding to synthesize with available history as no new plan was generated.")
                 break
 
-            current_cycle_results = []
-            for i, plan_step_desc in enumerate(exploration_plan_steps):
-                plan_step_display = (plan_step_desc[:70] + '...') if len(plan_step_desc) > 73 else plan_step_desc
-                print(f"\n[ThinkerAgent {i+1}/{len(exploration_plan_steps)}]: Processing Plan Step -> \"{plan_step_display}\"")
-                result = self.thinker.think(plan_step_desc, main_task_context=main_task)
-                current_cycle_results.append(result)
+            for plan in exploration_plans:
+                for step in plan.steps:
+                    display = f"{plan.plan_id}-{step.step_id}: {step.instructions}"
+                    display_short = (display[:70] + '...') if len(display) > 73 else display
+                    print(f"\n{BColors.OKCYAN}[ThinkerAgent]{BColors.ENDC}: Processing Plan Step -> \"{display_short}\"")
+                    step.response = self.thinker.think(step.instructions, parent_task_context=parent_task)
 
-            review_obj = self.reviewer.review(main_task, exploration_plan_steps, current_cycle_results, current_iteration)
+            # Reviewer now receives the full enriched exploration_plans
+            review_obj = self.reviewer.review(parent_task, exploration_plans, current_iteration)
 
             full_history.append({
-                "plan": exploration_plan_steps,
-                "results": current_cycle_results,
+                "plans_with_responses": exploration_plans,
                 "review": review_obj
             })
 
-            print(f"[ReviewerAgent] Decision: {review_obj.get('decision')}")
-            guidance_for_log = review_obj.get('guidance', 'No guidance provided.')
-            guidance_display = (guidance_for_log[:100] + '...') if len(guidance_for_log) > 103 else guidance_for_log
-            print(f"[ReviewerAgent] Guidance Snippet: {guidance_display}")
+            assessment = review_obj.get('assessment_of_current_iteration', '')
+            print(f"{BColors.OKCYAN}[ReviewerAgent]{BColors.ENDC} Assessment: {BColors.OKGREEN}{assessment}{BColors.ENDC}")
 
-            if review_obj.get("decision") == "SUFFICIENT":
-                print(f"\n--- Solution deemed SUFFICIENT after {current_iteration} iterations. ---")
-                break
-
-            previous_review_guidance = review_obj.get("guidance")
-            if not previous_review_guidance and review_obj.get("decision") == "REPLAN":
-                print("[Pipeline] Reviewer decided REPLAN but provided no guidance. This may lead to unproductive loops. Consider adjusting Reviewer prompt or task. Stopping.")
+            if assessment in ("SUFFICIENT_FOR_SYNTHESIS", "ERROR_IN_REVIEW_PROCESSING"):
+                print(f"\n{BColors.HEADER}--- Process will STOP based on Reviewer's assessment ('{assessment}') after {current_iteration} iterations. ---{BColors.ENDC}")
                 break
 
         if not full_history:
-            return "Error: No history was generated (e.g., initial planner failure)."
+            return f"{BColors.FAIL}Error: No history was generated (e.g., initial planner failure).{BColors.ENDC}"
 
-        print(f"\n--- Total model cost: ${self.client.total_cost():.4f} ---")
-        return self.synthesizer.synthesize(main_task, full_history)
+        print(f"\n{BColors.HEADER}--- Total model cost: ${self.client.total_cost():.4f} ---{BColors.ENDC}")
+        return self.synthesizer.synthesize(parent_task, full_history)
+
 
 if __name__ == "__main__":
-    # Prefer OPENAI_API_KEY, fallback to OPENROUTER_API_KEY with warning
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        api_key = os.environ.get("OPENROUTER_API_KEY")
-        if api_key:
-            print("Warning: Using deprecated OPENROUTER_API_KEY. Please set OPENAI_API_KEY instead.")
-        else:
-            print("Error: OPENAI_API_KEY environment variable not set.")
-            sys.exit(1)
+    api_key = os.environ.get("GEMINI_API_KEY")
 
-    main_task = input("USER (Enter your main task) > ").strip()
-    if not main_task:
-        print("Error: No main task provided. Exiting.")
+    parent_task = input(f"{BColors.BOLD}USER (Enter your main task) > {BColors.ENDC}").strip()
+    if not parent_task:
+        print(f"{BColors.FAIL}Error: No main task provided. Exiting.{BColors.ENDC}")
         sys.exit(1)
 
-    print(f"\nProceeding with task: \"{main_task}\"\n")
+    print(f"\n{BColors.OKCYAN}Proceeding with task: \"{parent_task}\"{BColors.ENDC}\n")
 
     pipeline = DeepThinkingPipeline(api_key=api_key)
-    final_answer = pipeline.run(main_task)
+    final_answer = pipeline.run(parent_task)

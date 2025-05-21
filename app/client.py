@@ -1,74 +1,136 @@
-# app/client.py - all api client code
+from typing import Any, Type, TypeVar, Optional
+from google import genai
+from google.genai import types
+from pydantic import BaseModel
+import json
 
-from openai import OpenAI
-from typing import Any
+T = TypeVar("T", bound=BaseModel)
 
-_O4_IN_RATE    = 1.10   / 1_000_000
-_O4_CACHE_RATE = 0.275  / 1_000_000
-_O4_OUT_RATE   = 4.40   / 1_000_000
+class GeminiAPIClient:
+    """Centralizes Gemini API calls and cost tracking."""
+    FLASH = "gemini-2.5-flash-preview-05-20"
+    PRO = "gemini-2.5-pro-preview-05-06"
 
-class DeepThinkingAPIClient:
-    """Centralizes every OpenAI responses.create() call and cost tracking."""
+    # Flash pricing
+    _IN_RATE = 0.15 / 1_000_000
+    _OUT_RATE = 0.60 / 1_000_000
+
     def __init__(self, api_key: str):
-        self.sdk = OpenAI(api_key=api_key)
-        self._total_cost_usd: float = 0.0
+        self._client = genai.Client(api_key=api_key)
+        self._total_cost = 0.0
 
     def total_cost(self) -> float:
-        return self._total_cost_usd
+        return self._total_cost
 
-    def planner_call(
+    def call(
         self,
-        model: str,
-        instructions: str,
-        user_prompt: str,
-    ) -> Any:
-        return self._create(model, instructions, user_prompt,
-                            extra_args=dict(text={"format": {"type": "json_object"}}))
-
-    def thinker_call(
-        self,
-        model: str,
-        instructions: str,
-        user_prompt: str,
-    ) -> Any:
-        return self._create(model, instructions, user_prompt)
-
-    def reviewer_call(
-        self,
-        model: str,
-        instructions: str,
-        user_prompt: str,
-    ) -> Any:
-        return self._create(model, instructions, user_prompt,
-                            extra_args=dict(text={"format": {"type": "json_object"}}))
-
-    def synthesizer_call(
-        self,
-        model: str,
-        instructions: str,
-        user_prompt: str,
-    ) -> Any:
-        return self._create(model, instructions, user_prompt)
-
-    def _create(
-        self,
-        model: str,
-        instructions: str,
-        user_prompt: str,
         *,
-        extra_args: dict | None = None,
-    ) -> Any:
-        kwargs = dict(model=model, instructions=instructions, input=user_prompt)
-        if extra_args:
-            kwargs.update(extra_args)
-        resp = self.sdk.responses.create(**kwargs)
+        model: str,
+        system_instruction: str,
+        user_prompt: str,
+        schema: Optional[Type[T]] = None,
+        tools: Optional[list[types.Tool]] = None,
+    ) -> T | str:
+        # Build config for Gemini API
+        gen_config_params: dict[str, Any] = {}
+
+        if system_instruction:
+            gen_config_params["system_instruction"] = system_instruction
+
+        if schema:
+            gen_config_params["response_mime_type"] = "application/json"
+            gen_config_params["response_schema"] = schema
+
+        if tools:
+            gen_config_params["tools"] = tools
+
+        config = types.GenerateContentConfig(**gen_config_params)
+
+        resp = self._client.models.generate_content(
+            model=model,
+            contents=user_prompt,
+            config=config,
+        )
         self._accumulate_cost(resp)
-        return resp
+
+        if schema:
+            try:
+                parsed = resp.parsed
+                if parsed is None:
+                    prompt_feedback = str(getattr(resp, 'prompt_feedback', 'N/A'))
+                    finish_reason = "N/A"
+                    if getattr(resp, "candidates", None) and hasattr(resp.candidates[0], "finish_reason"):
+                        finish_reason = str(resp.candidates[0].finish_reason)
+                    raw_text = "N/A"
+                    try:
+                        c = resp.candidates[0]
+                        if (
+                            hasattr(c, "content")
+                            and hasattr(c.content, "parts")
+                            and c.content.parts
+                            and hasattr(c.content.parts[0], "text")
+                        ):
+                            raw_text = c.content.parts[0].text
+                            if raw_text and len(raw_text) > 200:
+                                raw_text = raw_text[:200] + "..."
+                        elif hasattr(resp, "text") and resp.text:
+                            raw_text = resp.text
+                            if raw_text and len(raw_text) > 200:
+                                raw_text = raw_text[:200] + "..."
+                    except Exception:
+                        pass
+                    raise ValueError(
+                        f"Gemini API's `resp.parsed` was None for schema '{schema.__name__}'. "
+                        f"This might indicate a Pydantic validation error suppressed by the Gemini library, "
+                        f"or the model failed to produce valid JSON matching the schema. "
+                        f"Prompt Feedback: {prompt_feedback}. Finish Reason: {finish_reason}. "
+                        f"Raw text snippet: '{raw_text}'"
+                    )
+                if not isinstance(parsed, schema):
+                    raise TypeError(
+                        f"Gemini API's `resp.parsed` returned type '{type(parsed).__name__}', "
+                        f"but expected schema type '{schema.__name__}'. Parsed object: {str(parsed)[:200]}"
+                    )
+                return parsed
+            except (AttributeError, TypeError, ValueError) as e:
+                raise ValueError(
+                    f"Error processing Gemini JSON response with `resp.parsed` for schema '{schema.__name__}'. "
+                    f"Error: {type(e).__name__} - {e}."
+                ) from e
+            except Exception as e:
+                raise ValueError(
+                    f"Unexpected error processing Gemini JSON response with `resp.parsed` for schema '{schema.__name__}'. "
+                    f"Error: {type(e).__name__} - {e}."
+                ) from e
+
+        # Fallback for non-schema responses (plain text)
+        try:
+            return resp.text
+        except AttributeError:
+            resp_summary = str(resp)[:200] + "..." if str(resp) else "N/A"
+            raise ValueError(
+                f"Gemini API response does not have a 'text' attribute for non-schema call. "
+                f"Response summary: {resp_summary}"
+            )
+
+    def planner_call(self, model: str, instructions: str, user_prompt: str, schema: Optional[Type[T]] = None) -> T | str:
+        return self.call(model=model, system_instruction=instructions, user_prompt=user_prompt, schema=schema)
+
+    def thinker_call(self, model: str, instructions: str, user_prompt: str, tools: Optional[list[types.Tool]] = None) -> str:
+        response = self.call(model=model, system_instruction=instructions, user_prompt=user_prompt, tools=tools)
+        return response
+
+    def reviewer_call(self, model: str, instructions: str, user_prompt: str, schema: Optional[Type[T]] = None) -> T | str:
+        return self.call(model=model, system_instruction=instructions, user_prompt=user_prompt, schema=schema)
+
+    def synthesizer_call(self, model: str, instructions: str, user_prompt: str) -> str:
+        return self.call(model=model, system_instruction=instructions, user_prompt=user_prompt)
 
     def _accumulate_cost(self, resp):
-        usage = getattr(resp, "usage", None) or {}
-        cached = usage.get("input_tokens_details", {}).get("cached_tokens", 0)
-        inp    = usage.get("input_tokens", 0)
-        outp   = usage.get("output_tokens", 0)
-        cost   = ((inp - cached) * _O4_IN_RATE) + (cached * _O4_CACHE_RATE) + (outp * _O4_OUT_RATE)
-        self._total_cost_usd += cost
+        usage = getattr(resp, "usage_metadata", None)
+        if not usage:
+            return
+        inp = getattr(usage, "prompt_token_count", 0)
+        outp = getattr(usage, "candidates_token_count", 0)
+        cost = (inp * self._IN_RATE) + (outp * self._OUT_RATE)
+        self._total_cost += cost
