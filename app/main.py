@@ -1,10 +1,14 @@
 import os
 import sys
 import json
+import datetime
+import re
 from typing import Optional, List, Dict, Any, Tuple, Set
-from pydantic import BaseModel # Added for _log_agent_activity
+from pydantic import BaseModel
 import dotenv
+
 dotenv.load_dotenv()
+
 from app.instructions import (
     PLANNER_INSTRUCTIONS,
     THINKER_INSTRUCTIONS,
@@ -20,12 +24,8 @@ from app.schemas import (
     PlanStep,
     ContextSelection,
 )
+from google.genai import types # Added for ToolCodeExecution
 from google.genai.types import Tool, GoogleSearch
-
-
-# ──────────────────────────────
-# Helper Utilities
-# ──────────────────────────────
 
 class BColors:
     HEADER = '\033[95m'
@@ -38,11 +38,16 @@ class BColors:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
 
+LOG_FILE_PATH: Optional[str] = None
+
+def _strip_ansi_codes(text: str) -> str:
+    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+    return ansi_escape.sub('', text)
 
 def _build_prompt_xml_style(parts: List[Tuple[str, str]]) -> str:
-    """Builds a prompt string from parts, styled with XML-like tags."""
-    return "\n\n".join([f"<{tag}>{content}</{tag}>" for tag, content in parts if content is not None])
-
+    return "\n\n".join(
+        f"<{tag}>{content}</{tag}>" for tag, content in parts if content is not None
+    )
 
 def _log_agent_activity(
     agent_name: str,
@@ -52,32 +57,33 @@ def _log_agent_activity(
     is_json: bool = False,
     snippet_length: Optional[int] = None,
 ):
-    """Logs agent activity with consistent formatting and colors."""
     header = f"\n{BColors.OKCYAN}[{agent_name}]{BColors.ENDC} {phase}:"
-    
-    if snippet_length and isinstance(content, str) and len(content) > snippet_length:
-        content_to_log = content[:snippet_length] + "..."
-    else:
-        content_to_log = content
+    content_to_log = (
+        content[:snippet_length] + "..." if snippet_length and isinstance(content, str) and len(content) > snippet_length
+        else content
+    )
 
     if is_json:
-        # Handle Pydantic models or lists of them
         if isinstance(content_to_log, list) and all(isinstance(item, BaseModel) for item in content_to_log):
             log_content = json.dumps([item.model_dump(exclude_none=True) for item in content_to_log], indent=2)
         elif isinstance(content_to_log, BaseModel):
             log_content = json.dumps(content_to_log.model_dump(exclude_none=True), indent=2)
-        else: # Fallback for other types if is_json is true
+        else:
             log_content = json.dumps(content_to_log, indent=2)
     elif isinstance(content_to_log, str):
         log_content = content_to_log
-    else: # For non-string, non-JSON content, convert to string
+    else:
         log_content = str(content_to_log)
-        
+
     print(f"{header}\n{color}{log_content}{BColors.ENDC}")
 
-# ──────────────────────────────
-# Agent Classes
-# ──────────────────────────────
+    global LOG_FILE_PATH
+    if LOG_FILE_PATH:
+        try:
+            with open(LOG_FILE_PATH, "a", encoding="utf-8") as f:
+                f.write(f"{_strip_ansi_codes(header)}\n{_strip_ansi_codes(log_content)}\n\n")
+        except Exception as e:
+            print(f"{BColors.FAIL}Error writing to log file {LOG_FILE_PATH}: {e}{BColors.ENDC}")
 
 class PlannerAgent:
     def __init__(self, client, model):
@@ -90,12 +96,34 @@ class PlannerAgent:
         parent_task: str,
         previous_review_guidance_details_str: Optional[str] = None,
     ) -> List[ExplorationPlan]:
-        prompt_parts_tuples: List[Tuple[str, str]] = [("parent_task", parent_task)]
+        """
+        Generates exploration plans based on the parent task and optional previous review guidance.
+
+        The user_prompt is constructed in an XML-like format:
+
+        ```
+        <parent_task>The main goal or problem to be solved.</parent_task>
+
+        <previous_review_guidance_details>
+        Guidance from the ReviewerAgent from the previous iteration.
+        This can include:
+        - Reviewer's reasoning for the guidance.
+        - Target plan/step IDs for actions like DEEPEN, RETRY.
+        - Previous output of a target step.
+        - Original instruction of a target step.
+        - Suggested modifications or focus.
+        - Excluded strategies or new strategy suggestions for BROADEN.
+        - Current DFS path summary for CONTINUE_DFS_PATH.
+        </previous_review_guidance_details>
+
+        Note: The <previous_review_guidance_details> tag and its content are only included
+        if `previous_review_guidance_details_str` is provided.
+        ```
+        """
+        prompt_parts = [("parent_task", parent_task)]
         if previous_review_guidance_details_str:
-            prompt_parts_tuples.append(
-                ("previous_review_guidance_details", previous_review_guidance_details_str)
-            )
-        user_prompt = _build_prompt_xml_style(prompt_parts_tuples)
+            prompt_parts.append(("previous_review_guidance_details", previous_review_guidance_details_str))
+        user_prompt = _build_prompt_xml_style(prompt_parts)
 
         _log_agent_activity("PlannerAgent", "Instructions (snippet)", self.INSTRUCTIONS, color=BColors.OKCYAN, snippet_length=500)
         _log_agent_activity("PlannerAgent", "User Prompt", user_prompt)
@@ -118,7 +146,6 @@ class PlannerAgent:
             _log_agent_activity("PlannerAgent", f"Error: {e}. Returning empty plan.", "", color=BColors.FAIL)
             return []
 
-
 class ThinkerAgent:
     def __init__(self, client, model):
         self.client = client
@@ -131,6 +158,37 @@ class ThinkerAgent:
         parent_task_context: Optional[str] = None,
         dependency_outputs_context: Optional[str] = None,
     ) -> str:
+        """
+        Executes a specific task (a step in an exploration plan) using available tools.
+
+        The user_prompt is constructed by concatenating XML-like segments:
+        ```
+        <parent_task_context>
+        The overall context of the main goal the user is trying to achieve.
+        </parent_task_context>
+
+        <dependency_outputs>
+          <output plan_id="PLAN_ID_OF_DEPENDENCY_1" step_id="STEP_ID_OF_DEPENDENCY_1">
+            Output content from the first dependency step.
+          </output>
+          <output plan_id="PLAN_ID_OF_DEPENDENCY_2" step_id="STEP_ID_OF_DEPENDENCY_2">
+            Output content from the second dependency step.
+          </output>
+          ...
+        </dependency_outputs>
+
+        <your_task_description>
+        Specific instructions for the current step/task this ThinkerAgent instance needs to perform.
+        </your_task_description>
+
+        Notes:
+        - <parent_task_context> is included if `parent_task_context` is provided.
+        - <dependency_outputs> and its content are included if `dependency_outputs_context` is provided.
+          This context itself is pre-formatted as an XML string.
+        - <your_task_description> is always included.
+        - The segments are joined by double newlines.
+        ```
+        """
         prompt_parts = []
         if parent_task_context:
             prompt_parts.append(f"<parent_task_context>{parent_task_context}</parent_task_context>")
@@ -139,7 +197,10 @@ class ThinkerAgent:
         prompt_parts.append(f"<your_task_description>{your_task_description}</your_task_description>")
         user_prompt = "\n\n".join(prompt_parts)
 
-        tools_to_use = [Tool(google_search=GoogleSearch())]
+        tools_to_use = [
+            Tool(google_search=GoogleSearch()),
+            types.Tool(code_execution=types.ToolCodeExecution()) # Added Code Execution
+        ]
 
         _log_agent_activity("ThinkerAgent", "User Prompt", user_prompt)
 
@@ -152,7 +213,6 @@ class ThinkerAgent:
         response_str = response.strip() if isinstance(response, str) else str(response)
         _log_agent_activity("ThinkerAgent", "Full Response", response_str, color=BColors.OKGREEN)
         return response_str
-
 
 class ReviewerAgent:
     def __init__(self, client, model):
@@ -168,18 +228,63 @@ class ReviewerAgent:
         iterations_since_last_significant_progress: int,
         STAGNATION_THRESHOLD: int,
     ) -> ReviewerOut:
+        """
+        Reviews the outcomes of the current iteration's exploration plans and provides guidance.
+
+        The user_prompt is constructed in an XML-like format:
+
+        ```
+        <parent_task>The main goal or problem to be solved.</parent_task>
+
+        <current_iteration>Integer representing the current cycle number (e.g., 1, 2, 3...).</current_iteration>
+
+        <STAGNATION_THRESHOLD>
+        Integer threshold for determining stagnation (e.g., 2 or 3 iterations without progress).
+        </STAGNATION_THRESHOLD>
+
+        <iterations_since_last_significant_progress>
+        Integer count of iterations since the last time significant progress (new context gems) was made.
+        </iterations_since_last_significant_progress>
+
+        <plans_with_responses>
+        A JSON string representing a list of ExplorationPlan objects, including their steps and responses.
+        Example structure:
+        [
+          {
+            "plan_id": "alpha",
+            "plan_description": "Initial approach to solve X.",
+            "steps": [
+              {
+                "step_id": "1",
+                "instructions": "Research topic A.",
+                "dependencies": null, // or ["plan_id.step_id", ...]
+                "response": "Findings about topic A..."
+              },
+              {
+                "step_id": "2",
+                "instructions": "Analyze results from step 1.",
+                "dependencies": ["alpha.1"],
+                "response": "Analysis of findings..."
+              }
+            ]
+          },
+          // ... more plans
+        ]
+        </plans_with_responses>
+        ```
+        """
         plans_json = json.dumps(
             [p.model_dump(exclude_none=True) for p in plans_with_responses], indent=2
         )
 
-        prompt_parts_tuples: List[Tuple[str, str]] = [
+        prompt_parts = [
             ("parent_task", parent_task),
             ("current_iteration", str(current_iteration)),
             ("STAGNATION_THRESHOLD", str(STAGNATION_THRESHOLD)),
             ("iterations_since_last_significant_progress", str(iterations_since_last_significant_progress)),
             ("plans_with_responses", plans_json),
         ]
-        user_prompt = _build_prompt_xml_style(prompt_parts_tuples)
+        user_prompt = _build_prompt_xml_style(prompt_parts)
 
         _log_agent_activity("ReviewerAgent", "Instructions (snippet)", self.INSTRUCTIONS, color=BColors.OKCYAN, snippet_length=500)
         _log_agent_activity("ReviewerAgent", "User Prompt", user_prompt)
@@ -193,11 +298,9 @@ class ReviewerAgent:
             )
             _log_agent_activity("ReviewerAgent", "Evaluating progress...", "", color=BColors.OKCYAN)
             if not isinstance(response, ReviewerOut):
-                # This error is critical and should be raised to be caught by the outer try-except
                 raise ValueError(
                     f"Reviewer did not return a valid ReviewerOut object. Got: {type(response)}"
                 )
-
             _log_agent_activity("ReviewerAgent", "Reviewer Output", response, color=BColors.OKGREEN, is_json=True)
             return response
         except Exception as e:
@@ -213,12 +316,83 @@ class ReviewerAgent:
                 next_iteration_guidance=default_guidance,
             )
 
-
 class SynthesizerAgent:
     def __init__(self, client, model):
         self.client = client
         self.model = model
         self.INSTRUCTIONS = SYNTHESIZER_INSTRUCTIONS
+
+    def synthesize(
+        self, parent_task: str, full_history: List[Dict[str, Any]]
+    ) -> str:
+        """
+        Synthesizes the final solution based on the parent task and the full history of exploration.
+
+        The user_prompt is constructed by concatenating XML-like segments:
+
+        ```
+        <parent_task>The main goal or problem to be solved.</parent_task>
+
+        <full_history_summary>
+        --- Iteration 1 ---
+        Plans & Responses: [JSON representation of ExplorationPlan objects for iteration 1]
+        Review Assessment for this Iteration: Text assessment from the reviewer.
+        Reviewer Guidance Action for Next Iteration: e.g., CONTINUE_DFS_PATH, BROADEN, HALT_SUFFICIENT
+        Reviewer Reasoning: Text reasoning from the reviewer.
+        --- Iteration 2 ---
+        Plans & Responses: [JSON representation of ExplorationPlan objects for iteration 2]
+        Review Assessment for this Iteration: ...
+        ... and so on for all iterations.
+        </full_history_summary>
+
+        <selected_step_responses>
+        <step_response plan_id="PLAN_ID_1" step_id="STEP_ID_A">
+        Content of the response from plan PLAN_ID_1, step STEP_ID_A, selected by the Reviewer.
+        </step_response>
+        <step_response plan_id="PLAN_ID_2" step_id="STEP_ID_B">
+        Content of the response from plan PLAN_ID_2, step STEP_ID_B, selected by the Reviewer.
+        </step_response>
+        ...
+        </selected_step_responses>
+
+        Notes:
+        - <parent_task> is always included.
+        - <full_history_summary> contains a structured text summary of each iteration,
+          including plans, responses, and reviewer feedback.
+        - <selected_step_responses> is included if the final review identified specific step
+          responses (ContextSelection) to be used for synthesis. It contains the actual text
+          of those selected responses.
+        - The segments are joined by double newlines.
+        ```
+        """
+        full_history_summary_for_prompt, final_context_to_use = self._build_full_history_summary(full_history)
+        
+        prompt_parts = [
+            ("parent_task", parent_task),
+            ("full_history_summary", f"\n{full_history_summary_for_prompt}\n"),
+        ]
+
+        selected_responses_segment = self._build_selected_responses_segment(final_context_to_use, full_history)
+        if selected_responses_segment:
+            user_prompt = "\n\n".join([
+                _build_prompt_xml_style(prompt_parts),
+                selected_responses_segment
+            ])
+        else:
+            user_prompt = _build_prompt_xml_style(prompt_parts)
+
+        _log_agent_activity("SynthesizerAgent", "Instructions (snippet)", self.INSTRUCTIONS, color=BColors.OKCYAN, snippet_length=500)
+        _log_agent_activity("SynthesizerAgent", "User Prompt", user_prompt)
+
+        response = self.client.synthesizer_call(
+            self.model,
+            self.INSTRUCTIONS,
+            user_prompt,
+        )
+        _log_agent_activity("SynthesizerAgent", "Generating Final Solution...", "", color=BColors.OKCYAN)
+        response_str = response.strip() if isinstance(response, str) else str(response)
+        _log_agent_activity("SynthesizerAgent", "Final Solution", response_str, color=BColors.OKGREEN)
+        return response_str
 
     def _build_full_history_summary(self, full_history: List[Dict[str, Any]]) -> Tuple[str, Optional[List[ContextSelection]]]:
         history_summary_parts = []
@@ -236,7 +410,7 @@ class SynthesizerAgent:
                 if review_obj.next_iteration_guidance:
                     cycle_summary += f"Reviewer Guidance Action for Next Iteration: {review_obj.next_iteration_guidance.action}\n"
                     cycle_summary += f"Reviewer Reasoning: {review_obj.next_iteration_guidance.reasoning}\n"
-                if i == len(full_history) - 1: # Capture context from the very last review
+                if i == len(full_history) - 1:
                     final_context_to_use = review_obj.context_to_use
             else:
                 cycle_summary += "Review: N/A\n"
@@ -253,7 +427,7 @@ class SynthesizerAgent:
             return None
 
         all_step_responses: Dict[str, str] = {}
-        for cycle_data in full_history: # Re-iterate to build a complete map of all step responses
+        for cycle_data in full_history:
             plans_obj_list: List[ExplorationPlan] = cycle_data.get('plans_with_responses', [])
             for plan_obj in plans_obj_list:
                 for step_obj in plan_obj.steps:
@@ -278,24 +452,19 @@ class SynthesizerAgent:
     ) -> str:
         full_history_summary_for_prompt, final_context_to_use = self._build_full_history_summary(full_history)
         
-        prompt_parts_tuples: List[Tuple[str, str]] = [
+        prompt_parts = [
             ("parent_task", parent_task),
             ("full_history_summary", f"\n{full_history_summary_for_prompt}\n"),
         ]
 
         selected_responses_segment = self._build_selected_responses_segment(final_context_to_use, full_history)
         if selected_responses_segment:
-            # We don't use _build_prompt_xml_style here because selected_responses_segment is already XML-formatted
-            # and _build_prompt_xml_style would wrap it in another tag.
-            # Instead, we append it directly to a list that will be joined.
-            user_prompt_parts_list = [
-                _build_prompt_xml_style(prompt_parts_tuples),
+            user_prompt = "\n\n".join([
+                _build_prompt_xml_style(prompt_parts),
                 selected_responses_segment
-            ]
-            user_prompt = "\n\n".join(user_prompt_parts_list)
+            ])
         else:
-            user_prompt = _build_prompt_xml_style(prompt_parts_tuples)
-
+            user_prompt = _build_prompt_xml_style(prompt_parts)
 
         _log_agent_activity("SynthesizerAgent", "Instructions (snippet)", self.INSTRUCTIONS, color=BColors.OKCYAN, snippet_length=500)
         _log_agent_activity("SynthesizerAgent", "User Prompt", user_prompt)
@@ -310,7 +479,6 @@ class SynthesizerAgent:
         _log_agent_activity("SynthesizerAgent", "Final Solution", response_str, color=BColors.OKGREEN)
         return response_str
 
-
 class DeepThinkingPipeline:
     MAX_ITERATIONS = 7
     STAGNATION_THRESHOLD = 2
@@ -322,8 +490,8 @@ class DeepThinkingPipeline:
         stagnation_threshold: Optional[int] = None,
     ):
         self.client = Client(api_key=api_key)
-        #model = "gemini-2.5-flash-preview-05-20"
-        model = "gemini-2.5-pro-preview-05-06"
+        model = "gemini-2.5-flash-preview-05-20"
+        #model = "gemini-2.5-pro-preview-05-06"
         self.planner = PlannerAgent(self.client, model)
         self.thinker = ThinkerAgent(self.client, model)
         self.reviewer = ReviewerAgent(self.client, model)
@@ -340,7 +508,6 @@ class DeepThinkingPipeline:
         details = {"original_instruction": None, "previous_output": None}
         if not full_history:
             return details
-        # Iterate in reverse to find the most recent execution of the step
         for hist_item in reversed(full_history):
             plans_with_responses: List[ExplorationPlan] = hist_item.get('plans_with_responses', [])
             for p_hist in plans_with_responses:
@@ -349,7 +516,7 @@ class DeepThinkingPipeline:
                         if s_hist.step_id == step_id:
                             details["original_instruction"] = s_hist.instructions
                             details["previous_output"] = s_hist.response or "No response recorded."
-                            return details # Found the most recent, return
+                            return details
         return details
 
     def _prepare_planner_guidance_prompt(
@@ -403,53 +570,53 @@ class DeepThinkingPipeline:
         self,
         exploration_plans: List[ExplorationPlan],
         parent_task: str,
-    ) -> List[ExplorationPlan]: # Returns plans with responses filled in
+    ) -> List[ExplorationPlan]:
         if not exploration_plans:
             return []
 
-        all_steps_to_process: List[Tuple[ExplorationPlan, PlanStep]] = []
-        for plan_obj in exploration_plans:
-            for step_obj in plan_obj.steps:
-                all_steps_to_process.append((plan_obj, step_obj))
+        all_steps_to_process: List[Tuple[ExplorationPlan, PlanStep]] = [
+            (plan_obj, step_obj)
+            for plan_obj in exploration_plans
+            for step_obj in plan_obj.steps
+        ]
 
         completed_step_outputs: Dict[str, str] = {}
         executed_step_qnames: Set[str] = set()
-        # Max passes can be the number of steps if there's a perfect linear dependency chain
-        max_passes = len(all_steps_to_process) 
+        max_passes = len(all_steps_to_process)
 
-        for pass_num in range(max_passes + 1): # +1 for a final check or in case of no steps
+        for pass_num in range(max_passes + 1):
             executed_in_this_pass = 0
             if len(executed_step_qnames) == len(all_steps_to_process):
-                break # All steps processed
+                break
 
             for plan_obj, step_obj in all_steps_to_process:
                 step_qname = f"{plan_obj.plan_id}.{step_obj.step_id}"
                 if step_qname in executed_step_qnames:
                     continue
 
-                dependencies_met = True
-                if step_obj.dependencies:
-                    for dep_qname in step_obj.dependencies:
-                        if dep_qname not in completed_step_outputs:
-                            dependencies_met = False
-                            break
-                
+                dependencies_met = all(
+                    dep_qname in completed_step_outputs
+                    for dep_qname in (step_obj.dependencies or [])
+                )
+
                 if dependencies_met:
                     _log_agent_activity(
-                        "ThinkerAgent", 
+                        "ThinkerAgent",
                         f"Processing -> Plan {plan_obj.plan_id}-{step_obj.step_id}",
                         step_obj.instructions,
-                        color=BColors.OKCYAN, # Using OKCYAN for processing messages
+                        color=BColors.OKCYAN,
                         snippet_length=100
                     )
-                    
+
                     dependency_outputs_context_str = ""
                     if step_obj.dependencies:
                         dep_outputs_xml_parts = ["<dependency_outputs>"]
                         for dep_qname in step_obj.dependencies:
                             p_id, s_id = dep_qname.split('.', 1)
                             dep_output_content = completed_step_outputs.get(dep_qname, "Error: Dependency output not found!")
-                            dep_outputs_xml_parts.append(f'  <output plan_id="{p_id}" step_id="{s_id}">\n    {dep_output_content}\n  </output>')
+                            dep_outputs_xml_parts.append(
+                                f'  <output plan_id="{p_id}" step_id="{s_id}">\n    {dep_output_content}\n  </output>'
+                            )
                         dep_outputs_xml_parts.append("</dependency_outputs>")
                         dependency_outputs_context_str = "\n".join(dep_outputs_xml_parts)
 
@@ -461,19 +628,38 @@ class DeepThinkingPipeline:
                     completed_step_outputs[step_qname] = step_obj.response or "No response recorded."
                     executed_step_qnames.add(step_qname)
                     executed_in_this_pass += 1
-            
+
             if pass_num > 0 and executed_in_this_pass == 0 and len(executed_step_qnames) < len(all_steps_to_process):
-                pending_qnames = [f"{p.plan_id}.{s.step_id}" for p, s in all_steps_to_process if f"{p.plan_id}.{s.step_id}" not in executed_step_qnames]
-                _log_agent_activity("Pipeline", f"Error: Could not execute any more steps in pass {pass_num}. Possible circular dependency or unmet/invalid dependency. Pending: {pending_qnames}", "", color=BColors.FAIL)
+                pending_qnames = [
+                    f"{p.plan_id}.{s.step_id}"
+                    for p, s in all_steps_to_process
+                    if f"{p.plan_id}.{s.step_id}" not in executed_step_qnames
+                ]
+                _log_agent_activity(
+                    "Pipeline",
+                    f"Error: Could not execute any more steps in pass {pass_num}. Possible circular dependency or unmet/invalid dependency. Pending: {pending_qnames}",
+                    "",
+                    color=BColors.FAIL
+                )
                 break
-        
+
         if len(executed_step_qnames) < len(all_steps_to_process):
             unexecuted_count = len(all_steps_to_process) - len(executed_step_qnames)
-            _log_agent_activity("Pipeline", f"Warning: Not all steps were executed. {unexecuted_count} steps remain pending.", "", color=BColors.WARNING)
-        elif all_steps_to_process: # Only log success if there were steps to process
-             _log_agent_activity("Pipeline", f"All {len(all_steps_to_process)} steps executed successfully or attempted.", "", color=BColors.OKGREEN)
-        
-        return exploration_plans # Return the original list, now with responses populated
+            _log_agent_activity(
+                "Pipeline",
+                f"Warning: Not all steps were executed. {unexecuted_count} steps remain pending.",
+                "",
+                color=BColors.WARNING
+            )
+        elif all_steps_to_process:
+            _log_agent_activity(
+                "Pipeline",
+                f"All {len(all_steps_to_process)} steps executed successfully or attempted.",
+                "",
+                color=BColors.OKGREEN
+            )
+
+        return exploration_plans
 
     def run(self, parent_task: str) -> str:
         full_history: List[Dict[str, Any]] = []
@@ -484,40 +670,36 @@ class DeepThinkingPipeline:
         while True:
             current_iteration += 1
             guidance_prompt_segment = self._prepare_planner_guidance_prompt(previous_review_guidance, full_history)
-            
             current_exploration_plans: List[ExplorationPlan] = self.planner.generate_plan(parent_task, guidance_prompt_segment)
 
             if not current_exploration_plans:
                 _log_agent_activity("Pipeline", "Planner returned no new plans.", "", color=BColors.FAIL)
-                if not full_history: # Critical failure if initial planning fails
+                if not full_history:
                     return f"{BColors.FAIL}Error: Planner failed to generate an initial plan and there's no history. Cannot proceed.{BColors.ENDC}"
                 _log_agent_activity("Pipeline", "No new plans. Proceeding to synthesize or halt based on Reviewer.", "", color=BColors.OKCYAN)
-                # If planner returns no plans, we still proceed to reviewer with empty plans for this iteration
-                # The reviewer can then decide to HALT or the loop might terminate due to MAX_ITERATIONS.
 
-            # Execute steps for the current plans
             updated_exploration_plans = self._execute_exploration_steps(current_exploration_plans, parent_task)
 
             review_obj: ReviewerOut = self.reviewer.review(
                 parent_task,
-                updated_exploration_plans, # Pass plans with responses
+                updated_exploration_plans,
                 current_iteration,
                 iterations_since_last_significant_progress,
                 self.STAGNATION_THRESHOLD,
             )
 
             full_history.append({
-                "plans_with_responses": updated_exploration_plans, # Store plans with responses
+                "plans_with_responses": updated_exploration_plans,
                 "review": review_obj,
             })
 
             next_guidance = review_obj.next_iteration_guidance
-            previous_review_guidance = next_guidance # For the next loop
+            previous_review_guidance = next_guidance
 
             _log_agent_activity("ReviewerAgent", "Assessment", review_obj.assessment_of_current_iteration, color=BColors.OKGREEN)
             _log_agent_activity("ReviewerAgent", f"Next Action: {next_guidance.action}", f"Reason: {next_guidance.reasoning}", color=BColors.BOLD)
 
-            if review_obj.context_to_use: # "Gems" were found
+            if review_obj.context_to_use:
                 iterations_since_last_significant_progress = 0
                 _log_agent_activity("Pipeline", "Significant progress detected (new gems found). Resetting stagnation counter.", "", color=BColors.OKCYAN)
             else:
@@ -533,14 +715,12 @@ class DeepThinkingPipeline:
             if current_iteration >= self.MAX_ITERATIONS:
                 _log_agent_activity("Pipeline", f"Process will STOP due to MAX_ITERATIONS ({self.MAX_ITERATIONS}) reached.", "", color=BColors.HEADER)
                 break
-        
+
         if not full_history:
-             # This case should ideally be caught earlier if initial planner fails.
             return f"{BColors.FAIL}Error: No history was generated. Cannot synthesize.{BColors.ENDC}"
 
         _log_agent_activity("Pipeline", "Total model cost", f"${self.client.total_cost():.4f}", color=BColors.HEADER)
         return self.synthesizer.synthesize(parent_task, full_history)
-
 
 def main():
     api_key = os.environ.get("GEMINI_API_KEY")
@@ -548,21 +728,31 @@ def main():
         print(f"{BColors.FAIL}Error: GEMINI_API_KEY not found in environment variables.{BColors.ENDC}")
         sys.exit(1)
 
+    global LOG_FILE_PATH
+    log_dir = "app/log"
+    os.makedirs(log_dir, exist_ok=True)
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    LOG_FILE_PATH = os.path.join(log_dir, f"run_{timestamp}.log")
+    print(f"{BColors.OKBLUE}Logging to: {LOG_FILE_PATH}{BColors.ENDC}")
+
     parent_task_input = input(f"{BColors.BOLD}USER > {BColors.ENDC}").strip()
     if not parent_task_input:
-        print(f"{BColors.FAIL}Error: No main task provided. Exiting.{BColors.ENDC}")
+        error_message = f"{BColors.FAIL}Error: No main task provided. Exiting.{BColors.ENDC}"
+        print(error_message)
+        if LOG_FILE_PATH:
+            try:
+                with open(LOG_FILE_PATH, "a", encoding="utf-8") as f:
+                    f.write(_strip_ansi_codes(error_message) + "\n")
+            except Exception as e:
+                print(f"{BColors.FAIL}Error writing critical exit error to log: {e}{BColors.ENDC}")
         sys.exit(1)
-
-    max_iterations_override = DeepThinkingPipeline.MAX_ITERATIONS
-    stagnation_threshold_override = DeepThinkingPipeline.STAGNATION_THRESHOLD
 
     pipeline = DeepThinkingPipeline(
         api_key=api_key,
-        max_iterations=max_iterations_override,
-        stagnation_threshold=stagnation_threshold_override,
+        max_iterations=DeepThinkingPipeline.MAX_ITERATIONS,
+        stagnation_threshold=DeepThinkingPipeline.STAGNATION_THRESHOLD,
     )
     pipeline.run(parent_task_input)
-
 
 if __name__ == "__main__":
     main()

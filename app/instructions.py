@@ -481,6 +481,31 @@ EXPLORATION_STRATEGIES = """
           ]
         }
         ```
+
+* **24. Quantitative Modeling & Step-wise Derivation**
+    * *Definition/Explanation:* A methodical approach to solving complex quantitative problems by breaking them down into a sequence of smaller, interdependent calculation steps. Each step typically involves applying mathematical formulas, statistical principles, or probabilistic logic to derive intermediate values, which then feed into subsequent steps. This strategy heavily relies on the precise execution of calculations, often necessitating the use of a code execution tool.
+    * *When to Use:* When the `parent_task` requires deriving a specific numerical answer based on a set of rules, parameters, and interdependencies, such as population genetics problems (e.g., Hardy-Weinberg), financial forecasting, complex physics calculations, or multi-stage probabilistic scenarios. It's ideal when the problem cannot be solved in a single leap but requires building up the solution piece by piece.
+    * *Example Plan Step (How to Use for a genetic problem similar to the example):*
+        ```json
+        {
+          "exploration_plans": [
+            {
+              "plan_id": "QM",
+              "strategy": "Quantitative Modeling & Step-wise Derivation",
+              "overview": "Calculate average population height by modeling genetic frequencies, mating probabilities, and conditional milk access.",
+              "steps": [
+                { "step_id": "QM1", "instructions": "Given that 50% of the population has genotype 0/0 and is in Hardy-Weinberg equilibrium, calculate the frequencies of allele '0' (p) and allele '1' (q). Use code execution and output p and q." },
+                { "step_id": "QM2", "instructions": "Using p and q from QM.QM1, calculate the frequencies of genotypes 0/0 (p^2), 0/1 (2pq), and 1/1 (q^2). Use code execution and output these three frequencies.", "dependencies": ["QM.QM1"] },
+                { "step_id": "QM3", "instructions": "Assuming random mating, list all possible parental genotype pairings (e.g., Father 0/0 x Mother 0/0, Father 0/0 x Mother 0/1, etc.) and calculate the probability of each pairing occurring using the genotype frequencies from QM.QM2. Use code execution and output each pairing and its probability.", "dependencies": ["QM.QM2"] },
+                { "step_id": "QM4", "instructions": "For each parental pairing from QM.QM3, determine the possible offspring genotypes and their probabilities. Then, for each offspring, determine if they will have milk access. Milk is NOT available if: (Father is 0/0) OR (Offspring is 0/0). Output for each parental pair: a list of offspring genotypes, their probabilities, and a milk access status (True/False). Use code execution.", "dependencies": ["QM.QM3"] },
+                { "step_id": "QM5", "instructions": "Calculate the overall proportion of offspring in the population that will NOT have milk access. This involves summing (probability_of_parental_pairing * probability_of_offspring_from_that_pairing_without_milk) across all relevant pairings and offspring outcomes identified in QM.QM3 and QM.QM4. Use code execution and output this proportion.", "dependencies": ["QM.QM3", "QM.QM4"] },
+                { "step_id": "QM6", "instructions": "Given that individuals without milk are 42 inches tall and those with milk are 54 inches tall, calculate the average adult height of the population using the proportion of offspring without milk from QM.QM5. Average height = (Proportion_NoMilk * 42) + ((1 - Proportion_NoMilk) * 54). Round the final answer to four significant figures. Use code execution and output the average height in inches.", "dependencies": ["QM.QM5"] }
+              ]
+            }
+          ]
+        }
+        ```
+    * *Alignment:* Complements "First Principles Thinking" by applying it to quantitative domains. Enhances "Divide & Conquer" with a specific focus on sequential calculation and precision.
 """
 
 PLANNER_INSTRUCTIONS = f"""
@@ -527,7 +552,16 @@ Create a strategic Exploration Plan to address the provided `parent_task`.
     *   **Instructing ThinkerAgent on Tool Use:**
         *   **Search:** If a step needs external info, phrase `instructions` to indicate research (e.g., 'Investigate X', 'Find developments in Y').
         *   **URL Context:** If `parent_task` involves URLs, include them in `instructions` and direct the ThinkerAgent to use their content (e.g., "Analyze [URL1]...", "Based on [URL], determine...").
-
+        *   **Code Execution:** If a step can benefit from quantitative analysis, pseudo-simulation, code-based testing, or complex calculations to deeply explore the problem space and generate solid insights, the Planner should proactively instruct Thinker Agent to use its Python code execution tool. This is particularly valuable for strategies involving hypothesis testing, scenario modeling, constraint analysis, or any task where empirical data (even simulated) can lead to a more robust understanding or solution. Example: `'instructions': 'Generate and run Python code to simulate the impact of parameter X on outcome Y under various conditions.'` or `'instructions': 'Use code execution to calculate the optimal values for Z based on the provided dataset and constraints.'` The Planner must actively consider when code execution can provide a more rigorous or insightful path to fulfilling the step's objective.
+        *   **Guidance for Complex Quantitative & Probabilistic Tasks:**
+            *   When the `parent_task` involves deriving a numerical answer through multiple stages of calculation (e.g., probabilities, genetic frequencies, weighted averages, financial modeling), the Planner **MUST** break this down into a sequence of smaller, clearly defined calculation steps.
+            *   For each such calculation step, the `instructions` to the ThinkerAgent should explicitly state:
+                1.  What specific quantity needs to be calculated.
+                2.  The inputs/variables to use (referencing outputs of dependency steps if necessary).
+                3.  The formula or logical rule to apply, if known or inferable.
+                4.  A directive to **"Use code execution to perform this calculation and output the precise numerical result."**
+            *   Ensure dependencies are correctly defined so that intermediate calculated values are passed to subsequent calculation steps. For example, a step calculating allele frequencies should be a dependency for a step calculating genotype frequencies.
+ 
 3.  **Promote Comprehensive Exploration:** Ensure plan steps collectively promote thorough exploration, aligned with the current mode (BFS or DFS).
 
 ### Exploration Strategies and Algorithms
@@ -597,6 +631,12 @@ Perform deep, methodical exploration and reasoning strictly on the assigned `you
 3.  **Tool Usage (If Applicable):**
     * **Search:** The Google Search tool is available. Use judgment to employ it if the task implies needing external info, up-to-date knowledge, or if specified in `your_task_description`. Incorporate search findings if used.
     * **URL Context:** If `your_task_description` provides URLs and instructs their use (e.g., "analyze [URL]", "consider context from [URL]"), incorporate insights from these URLs. The model can access/understand content from provided URLs.
+    * **Code Execution:** The Gemini Code Execution tool is available. This allows you to generate and run Python code to perform calculations, simulations, or test hypotheses. The model can iteratively learn from code execution results.
+        *   **How to instruct:** If your task requires Python code execution, clearly state this (e.g., 'Generate and run Python code to calculate X', 'Use code execution to verify Y').
+        *   **When `your_task_description` directs you to calculate a specific numerical value, derive a quantity, apply a formula, or perform statistical/probabilistic computations, you MUST attempt to use the Code Execution tool.** Generate Python code to perform the calculation.
+        *   **Output parts:** The response may include `executableCode` (the Python code generated) and `codeExecutionResult` (the output from running the code), in addition to `text`.
+            *   **Your primary textual response for such a task should clearly state the numerical result obtained from the code execution.**
+            *   **Always include the `executableCode` and `codeExecutionResult` in your response parts when code execution is used for calculation, so the process is transparent and verifiable.**
 
 ## Output Instructions
 Provide a comprehensive, well-reasoned textual response directly addressing `your_task_description`.
