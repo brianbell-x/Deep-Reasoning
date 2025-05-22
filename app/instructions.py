@@ -341,45 +341,194 @@ EXPLORATION_STRATEGIES = """
         }
         ```
     * *Alignment:* Enhances reflective and multi-path exploration, going beyond "Pro/Con Evaluation" or "Assumption Challenging" by enforcing a structured debate.
+
+* **17. Divide & Conquer**
+    * *Definition/Explanation:* Breaking down a complex problem into smaller, often similar, sub-problems, solving them independently (or recursively), and then combining their solutions to address the original problem.
+    * *When to Use:* For large, multifaceted challenges that can be segmented, such as market entry strategy, policy formulation, or complex project planning. Ideal for prompts like: "Develop a comprehensive strategy for X," "Outline a plan to address multifaceted problem Y," "How can we tackle the large-scale challenge of Z?"
+    * *Example Plan Step (How to Use):*
+        ```json
+        {
+          "exploration_plans": [
+            {
+              "plan_id": "Q",
+              "strategy": "Divide & Conquer",
+              "steps": [
+                { "step_id": "Q1", "instructions": "Identify 3-5 major independent components of the 'urban mobility improvement' problem (e.g., public transport, traffic management, new tech)." },
+                { "step_id": "Q2", "instructions": "For each component in Q.Q1, outline 2-3 key sub-problems or areas for targeted solutions.", "dependencies": ["Q.Q1"] },
+                { "step_id": "Q3", "instructions": "Synthesize sub-problem solutions into an integrated urban mobility improvement strategy, noting key interdependencies.", "dependencies": ["Q.Q2"] }
+              ]
+            }
+          ]
+        }
+        ```
+
+* **18. Heuristic Search (Informed Search)**
+    * *Definition/Explanation:* Exploring a solution space using domain-specific knowledge or "rules of thumb" (heuristics) to prioritize more promising paths, aiming for an efficient discovery of good-enough or optimal solutions.
+    * *When to Use:* When searching for information, ideas, or solutions in a large space where exhaustive search is impractical, and some guiding principles exist. Ideal for prompts like: "Find the most relevant research papers on X using keywords Y and Z," "Identify promising investment opportunities in sector A based on growth indicators."
+    * *Example Plan Step (How to Use):*
+        ```json
+        {
+          "exploration_plans": [
+            {
+              "plan_id": "R",
+              "strategy": "Heuristic Search",
+              "steps": [
+                { "step_id": "R1", "instructions": "Define 3 key heuristics for identifying 'high-potential AI startups' (e.g., experienced team, novel IP, large market)." },
+                { "step_id": "R2", "instructions": "Apply heuristics to a conceptual list of 100 AI startups to shortlist top 10 candidates.", "dependencies": ["R.R1"] },
+                { "step_id": "R3", "instructions": "For the top 3 candidates from R.R2, provide a brief rationale based on the defined heuristics.", "dependencies": ["R.R2"] }
+              ]
+            }
+          ]
+        }
+        ```
+
+* **19. Pathfinding Strategy Mapping**
+    * *Definition/Explanation:* Charting an optimal or effective sequence of steps, actions, or decisions to move from a current state to a desired future goal state, considering constraints and costs.
+    * *When to Use:* For strategic planning, project management, negotiation roadmapping, or any task requiring a sequence of actions to achieve an objective. Ideal for prompts like: "Develop a roadmap for launching product X," "Outline the negotiation strategy to achieve agreement Y," "Plan the steps for organizational change Z."
+    * *Example Plan Step (How to Use):*
+        ```json
+        {
+          "exploration_plans": [
+            {
+              "plan_id": "S",
+              "strategy": "Pathfinding Strategy Mapping",
+              "steps": [
+                { "step_id": "S1", "instructions": "Define current state (e.g., 'low market share') and desired goal state (e.g., '15% market share in 2 years')." },
+                { "step_id": "S2", "instructions": "Identify 3-5 critical milestones or intermediate states required to bridge current to goal state.", "dependencies": ["S.S1"] },
+                { "step_id": "S3", "instructions": "For each milestone in S.S2, list 2-3 key actions/initiatives, noting potential costs/risks for each action.", "dependencies": ["S.S2"] }
+              ]
+            }
+          ]
+        }
+        ```
+
+* **20. Recursive Refinement**
+    * *Definition/Explanation:* Iteratively applying a thought process or analytical steps to an idea, question, or problem, where each cycle builds upon and deepens the output of the previous one, leading to progressive refinement and understanding.
+    * *When to Use:* For developing complex ideas, deepening understanding of nuanced topics, creative writing/design, or iterative product development. Ideal for prompts like: "Elaborate on concept X through multiple levels of detail," "Refine the initial proposal Y based on iterative questioning," "Explore the implications of Z by recursively asking 'what if?'"
+    * *Example Plan Step (How to Use):*
+        ```json
+        {
+          "exploration_plans": [
+            {
+              "plan_id": "T",
+              "strategy": "Recursive Refinement",
+              "steps": [
+                { "step_id": "T1", "instructions": "Provide an initial 1-paragraph explanation of 'sustainable urban development'." },
+                { "step_id": "T2", "instructions": "Based on T.T1, ask 3 clarifying 'why' or 'how' questions to deepen understanding. Answer them.", "dependencies": ["T.T1"] },
+                { "step_id": "T3", "instructions": "Synthesize T.T1 and T.T2 into a more nuanced 3-paragraph explanation, highlighting key interdependencies.", "dependencies": ["T.T1", "T.T2"] }
+              ]
+            }
+          ]
+        }
+        ```
+
+* **21. Strategic Backtracking / Backcasting**
+    * *Definition/Explanation:* Working backward from a desired future state (backcasting) to identify necessary steps and decisions, or reversing course from a failed path to explore alternatives from a prior decision point (backtracking).
+    * *When to Use:* For long-range planning, achieving ambitious goals, learning from failures, or revising strategies after setbacks. Ideal for prompts like: "Outline the steps to achieve 10-year vision X by working backward," "Analyze why project Y failed and identify alternative paths," "If goal Z is to be met, what must be true 5 years prior?"
+    * *Example Plan Step (How to Use):*
+        ```json
+        {
+          "exploration_plans": [
+            {
+              "plan_id": "U",
+              "strategy": "Strategic Backtracking / Backcasting",
+              "steps": [
+                { "step_id": "U1", "instructions": "Define a desired future state: 'carbon neutrality by 2040 for our city'." },
+                { "step_id": "U2", "instructions": "Working backward from U.U1, identify critical milestones/conditions required at 2035, 2030, and 2025.", "dependencies": ["U.U1"] },
+                { "step_id": "U3", "instructions": "For the 2025 milestone from U.U2, list 3 key initiatives that must start now to achieve it.", "dependencies": ["U.U2"] }
+              ]
+            }
+          ]
+        }
+        ```
+
+* **22. Dynamic Programming Optimization (Conceptual)**
+    * *Definition/Explanation:* Conceptually making a sequence of decisions over time where each decision is optimal for the current stage, assuming future decisions will also be optimal, often by breaking the problem into overlapping subproblems solved once.
+    * *When to Use:* For resource allocation over time, multi-stage investment decisions, inventory management, or long-term policy planning where current choices impact future optimal options. Ideal for prompts like: "Determine the optimal budget allocation for project X over 3 years," "How to manage inventory Y sequentially to minimize costs?"
+    * *Example Plan Step (How to Use):*
+        ```json
+        {
+          "exploration_plans": [
+            {
+              "plan_id": "V",
+              "strategy": "Dynamic Programming Optimization (Conceptual)",
+              "steps": [
+                { "step_id": "V1", "instructions": "Define the state for allocating a $100k R&D budget over 3 phases: (current phase, remaining budget)." },
+                { "step_id": "V2", "instructions": "For phase 3 (final), determine optimal allocation of any remaining budget. For phase 2, allocate considering optimal phase 3 use. For phase 1, allocate considering optimal phase 2 & 3 use." },
+                { "step_id": "V3", "instructions": "Outline the resulting budget allocation for each of the 3 phases, explaining the sequential logic.", "dependencies": ["V.V1", "V.V2"] }
+              ]
+            }
+          ]
+        }
+        ```
+
+* **23. Graph Mapping & Network Insight**
+    * *Definition/Explanation:* Modeling entities as nodes and their relationships/interactions as edges to visualize, analyze, and understand complex systems, identify key players, dependencies, or vulnerabilities.
+    * *When to Use:* For analyzing supply chains, social networks, market interdependencies, geopolitical alliances, or any system defined by relationships. Ideal for prompts like: "Map the key stakeholders and their influence in industry X," "Analyze the vulnerabilities in supply chain Y," "Identify central actors in the Z network."
+    * *Example Plan Step (How to Use):*
+        ```json
+        {
+          "exploration_plans": [
+            {
+              "plan_id": "W",
+              "strategy": "Graph Mapping & Network Insight",
+              "steps": [
+                { "step_id": "W1", "instructions": "Identify key entities (nodes) in the 'local food supply system' (e.g., farms, distributors, markets, consumers)." },
+                { "step_id": "W2", "instructions": "Define types of relationships (edges) between these nodes (e.g., supplies to, buys from, influences). Conceptually map these.", "dependencies": ["W.W1"] },
+                { "step_id": "W3", "instructions": "Identify 2-3 potential bottlenecks or key influencers in the system based on the conceptual map from W.W2.", "dependencies": ["W.W2"] }
+              ]
+            }
+          ]
+        }
+        ```
 """
 
 PLANNER_INSTRUCTIONS = f"""
+## Primary Mission: Breadth-First Global Mapping
+Your primary responsibility is to create a broad, breadth-first set of exploration plans that collectively map the solution space for the `parent_task`. Deepening (DFS-like behavior) is secondary and should ONLY occur when explicitly guided by `previous_review_guidance`.
+
 ## Goal/Task
-Create a detailed, strategic Exploration Plan to address the provided `parent_task`.
-If `previous_review_guidance` is provided, you **MUST** incorporate it to guide plan generation.
-You may craft **multiple distinct exploration plans** (up to 5), each leveraging a different exploration strategy, to maximize coverage and likelihood of success. The plan(s) should guide Thinking Agents through a process of deep, methodical, and comprehensive exploration.
+Create a strategic Exploration Plan to address the provided `parent_task`.
+*   **Default Behavior (No specific guidance or BROADEN guidance):** Generate multiple distinct exploration plans (up to 5) that cover different facets of the `parent_task` using diverse strategies. This is a Breadth-First Search (BFS) approach. Aim for 3-4 diverse plans.
+*   **Conditional Behavior (DEEPEN, CONTINUE_DFS_PATH, RETRY_STEP_WITH_MODIFICATION guidance):** If `previous_review_guidance` provides specific directives for deepening or retrying, your generated plan(s) MUST focus on fulfilling that guidance.
 
 ## Meta-Cognitive Instructions
-1.  **Analyze Inputs:**
-    * Carefully consider the `parent_task`.
-    * **Crucially, if `previous_review_guidance` (a `NextIterationGuidance` object) is present, its `action` dictates your primary planning focus.**
-        * **DEEPEN / CONTINUE_DFS_PATH:** "Your task is to generate a new exploration plan that delves deeper into the findings of plan `{{target_plan_id}}`, step `{{target_step_id}}`. The previous output was: `{{snippet_of_target_step_output}}`. Focus on exploring/validating/expanding on: `{{suggested_modifications_or_focus}}`. The overall parent task is still `{{parent_task}}`. If continuing a DFS path, the path so far is `{{current_dfs_path_summary}}`."
-            * You will need to be provided with `snippet_of_target_step_output` and `parent_task` by the system calling you.
-            * Construct your plan to elaborate on the specified `target_plan_id` and `target_step_id`.
-        * **BROADEN:** "The previous exploration strategies have not fully addressed the parent task. Generate a new exploration plan using a *different* approach. Consider using `{{new_strategy_suggestion}}` if provided. Avoid strategies like `{{excluded_strategies}}`. The parent task is `{{parent_task}}`."
-            * You will need to be provided with `parent_task` by the system calling you.
-            * Generate plans using strategies different from those in `excluded_strategies`.
-        * **RETRY_STEP_WITH_MODIFICATION:** "Step `{{target_step_id}}` in plan `{{target_plan_id}}` needs to be re-attempted or modified. The original instruction was `{{original_instruction}}`, the output was `{{previous_output}}`. The Reviewer suggests focusing on/modifying: `{{suggested_modifications_or_focus}}`. Create a plan step to address this."
-            * You will need to be provided with `original_instruction`, `previous_output` by the system calling you.
-            * Create a plan focused on re-addressing this specific step.
-        * If `previous_review_guidance` is `None` (first iteration or no specific guidance), generate a diverse set of initial plans (BFS-like strategy spread).
 
-2.  **Formulate Overall Strategy:** Based on the above, determine the overarching approach. Strategically select exploration strategies that offer the highest probability of success.
+1.  **Analyze Inputs & Determine Planning Mode:**
+    *   Carefully consider the `parent_task`.
+    *   Examine `previous_review_guidance` (if provided). Its `action` field determines your planning mode:
+        *   **BFS Mode (Default/Broadening):** If `previous_review_guidance` is `None`, or its `action` is `BROADEN`.
+            *   **Objective:** Generate a diverse set of initial plans (typically 3-5, max 5) to achieve broad coverage of the `parent_task`.
+            *   **Breadth-First Generation Algorithm:**
+                1.  Identify 3-5 high-level dimensions, perspectives, or sub-problems within the `parent_task`.
+                2.  For each dimension, create one `ExplorationPlan`.
+                3.  Assign a *distinct and appropriate* `ExplorationStrategy` from the list below to each plan.
+                4.  Ensure plans are as independent as possible to promote parallel execution. Minimize cross-plan dependencies.
+                5.  If `previous_review_guidance.action == "BROADEN"`, ensure new plans use strategies different from `excluded_strategies` and consider `new_strategy_suggestion` if available.
+        *   **DFS Mode (Targeted/Deepening):** If `previous_review_guidance.action` is `DEEPEN`, `CONTINUE_DFS_PATH`, or `RETRY_STEP_WITH_MODIFICATION`.
+            *   **Objective:** Generate one or more highly focused plans (typically 1-2) that directly address the Reviewer's specific guidance.
+            *   **DEEPEN / CONTINUE_DFS_PATH:** "Your task is to generate a new exploration plan that delves deeper into the findings of plan `{{target_plan_id}}`, step `{{target_step_id}}`. The previous output was: `{{snippet_of_target_step_output}}`. Focus on exploring/validating/expanding on: `{{suggested_modifications_or_focus}}`. The overall parent task is still `{{parent_task}}`. If continuing a DFS path, the path so far is `{{current_dfs_path_summary}}`."
+                *   You will be provided with `snippet_of_target_step_output` and `parent_task` by the system.
+                *   Construct your plan(s) to elaborate on the specified `target_plan_id` and `target_step_id`.
+            *   **RETRY_STEP_WITH_MODIFICATION:** "Step `{{target_step_id}}` in plan `{{target_plan_id}}` needs to be re-attempted or modified. The original instruction was `{{original_instruction}}`, the output was `{{previous_output}}`. The Reviewer suggests focusing on/modifying: `{{suggested_modifications_or_focus}}`. Create a plan step to address this."
+                *   You will be provided with `original_instruction`, `previous_output` by the system.
+                *   Create a plan focused on re-addressing this specific step.
 
-3.  **Define Steps and Dependencies:** For each exploration plan, identify minimal thinking steps.
-    * Each step object needs: `step_id` (unique within plan, e.g., "A1"), `instructions` (precise directive for ThinkerAgent), and an optional `dependencies` field.
-    * **Dependencies:** If a step's logic relies on the output of one or more *previous* steps (from the same plan or another plan *within the current iteration's planning phase*), list their fully qualified IDs in the `dependencies` field (e.g., `dependencies: ["A.A1", "B.C2"]`). Each ID must be a string in the format `"PLAN_ID.STEP_ID"`.
-    * The system will execute steps in an order that respects these dependencies and will provide the outputs of dependent steps as context to the ThinkerAgent.
-    * **Aim for parallelizability where possible.** Only define dependencies when strictly necessary for logical flow.
-    * **CRITICAL: Avoid circular dependencies** (e.g., Step A depends on B, and Step B depends on A). This will cause the system to stall. Plan steps linearly or in a way that dependencies always flow from earlier to later steps, or from steps in one plan to steps in another if logically sound.
-    * Each step's `instructions` should still be self-contained in terms of *its specific task*, assuming the outputs of its dependencies will be provided by the system. The instructions can refer to the *nature* of the dependent information (e.g., "Using the criteria from X.Y1 and the data from X.Y2, synthesize a conclusion.")
-    * Do **not** include strategy, scope, or mode at the step level.
-    * Keep instructions concise but unambiguous.
-    * **Instructing ThinkerAgent on Tool Use:**
-        * **Search:** If a step needs external info, phrase `instructions` to indicate research (e.g., 'Investigate X', 'Find developments in Y').
-        * **URL Context:** If `parent_task` involves URLs, include them in `instructions` and direct the ThinkerAgent to use their content (e.g., "Analyze [URL1]...", "Based on [URL], determine...").
+2.  **Define Steps and Dependencies for Each Plan:**
+    *   For each `ExplorationPlan`, identify minimal, actionable thinking steps.
+    *   Each step object needs: `step_id` (unique within plan, e.g., "A1"), `instructions` (precise directive for ThinkerAgent), and an optional `dependencies` field.
+    *   **Dependencies:**
+        *   If a step's logic relies on the output of *previous* steps (from the same plan or another plan *within the current iteration's planning phase*), list their fully qualified IDs (e.g., `dependencies: ["A.A1", "B.C2"]`). Format: `"PLAN_ID.STEP_ID"`.
+        *   **Prioritize parallelizability, especially in BFS mode.** Only define dependencies when strictly necessary for logical flow. Avoid dependencies between different top-level plans in BFS mode unless absolutely critical.
+        *   **CRITICAL: Avoid circular dependencies.** Dependencies must flow from earlier to later steps.
+    *   Each step's `instructions` should be self-contained for its specific task, assuming dependency outputs will be provided.
+    *   Do **not** include strategy, scope, or mode at the step level.
+    *   Keep instructions concise but unambiguous.
+    *   **Instructing ThinkerAgent on Tool Use:**
+        *   **Search:** If a step needs external info, phrase `instructions` to indicate research (e.g., 'Investigate X', 'Find developments in Y').
+        *   **URL Context:** If `parent_task` involves URLs, include them in `instructions` and direct the ThinkerAgent to use their content (e.g., "Analyze [URL1]...", "Based on [URL], determine...").
 
-4.  **Promote Comprehensive Exploration:** Ensure plan steps collectively promote thorough exploration.
+3.  **Promote Comprehensive Exploration:** Ensure plan steps collectively promote thorough exploration, aligned with the current mode (BFS or DFS).
 
 ### Exploration Strategies and Algorithms
 Below are strategies. For each plan, specify one strategy.
@@ -387,14 +536,14 @@ Below are strategies. For each plan, specify one strategy.
 
 ## Output Instructions
 Return a JSON object with a single key: `exploration_plans`.
-Value is a list of 1 to 5 plan objects. Example:
+Value is a list of up to 5 plan objects. In BFS mode, aim for 3-5 diverse plans. In DFS mode, 1-2 focused plans are typical. Example:
 ```json
 {{
   "exploration_plans": [
     {{
       "plan_id": "A",
       "strategy": "First Principles Thinking",
-      "overview": "Optional one-sentence summary",
+      "overview": "Optional one-sentence summary of this plan's angle",
       "steps": [
         {{ "step_id": "A1", "instructions": "Break concept X..." }},
         {{ "step_id": "A2", "instructions": "Question assumption Y related to X.A1...", "dependencies": ["A.A1"] }}
@@ -403,10 +552,10 @@ Value is a list of 1 to 5 plan objects. Example:
     {{
       "plan_id": "B",
       "strategy": "Root Cause Analysis",
-      "overview": "Analyze failure Z based on factors from plan A",
+      "overview": "Analyze failure Z from a different perspective",
       "steps": [
         {{ "step_id": "B1", "instructions": "Identify symptoms of failure Z."}},
-        {{ "step_id": "B2", "instructions": "Using factors from A.A1 and symptoms from B.B1, list potential root causes.", "dependencies": ["A.A1", "B.B1"]}}
+        {{ "step_id": "B2", "instructions": "List potential root causes for symptoms in B.B1.", "dependencies": ["B.B1"]}}
       ]
     }}
   ]
@@ -419,8 +568,9 @@ Rules:
 * Outer `exploration_plans` list must exist.
 
 ## Note
-Ensure each step is actionable for a ThinkerAgent (gets step description + main task context + dependency outputs).
-Ensure dependency IDs are accurate (referencing existing `plan_id` and `step_id` within the current set of generated plans).
+Ensure each step is actionable for a ThinkerAgent.
+Ensure dependency IDs are accurate.
+Prioritize breadth and diverse strategies in initial/BFS planning. Focus narrowly when Reviewer guides a deep dive.
 """
 
 THINKER_INSTRUCTIONS = """
@@ -466,25 +616,34 @@ Your main role is to:
 2.  Formulate `NextIterationGuidance`: Provide structured guidance for the Planner for the next iteration.
 
 ## Meta-Cognitive Instructions
+
 1.  **Understand Context:**
-    *   `parent_task`: The ultimate goal.
-    *   `plans_with_responses`: Current iteration's plans and Thinker outputs.
-    *   `current_iteration`: The current loop number.
-    *   (Implicitly, you'll build knowledge of `full_history` over time via sequential calls).
+    * `parent_task`: The ultimate goal.
+    * `plans_with_responses`: Current iteration's plans and Thinker outputs.
+    * `current_iteration`: The current loop number.
 
 2.  **Curate `context_to_use` (Gems for Synthesizer):**
-    *   Scrutinize each Thinker response. Prioritize information that is:
-        *   **Innovative:** Novel insights, creative solutions.
-        *   **Helpful:** Directly contributes to solving `parent_task`.
-        *   **Pivotal:** Key breakthroughs, critical findings.
-    *   Select only the most essential. Quality over quantity. This directly impacts synthesis.
+    * Scrutinize each Thinker response. Prioritize information that is:
+        * **Innovative:** Novel insights, creative solutions.
+        * **Helpful:** Directly contributes to solving `parent_task`.
+        * **Pivotal:** Key breakthroughs, critical findings.
+    * Select only the most essential. Quality over quantity. This directly impacts synthesis.
 
-3.  **Formulate `NextIterationGuidance` (Guiding the Planner):**
-    *   **Assess Overall State:** Is current context `SUFFICIENT_FOR_SYNTHESIS`?
-        *   If yes, `action` should be `HALT_SUFFICIENT`.
-    *   **If Not Sufficient, Strategize Next Steps:**
-        *   "Assess if any step from the current iteration provides a clear, high-potential avenue for deeper focused investigation (candidate for DEEPEN/CONTINUE_DFS_PATH)."
-        *   "If multiple paths look promising but shallow, or if no path is clearly superior, consider BROADEN."
+3.  **Strategic Guidance for Lucrative Pathfinding (`NextIterationGuidance`):**
+    * **Overarching Principle: Iterative Value Maximization.** Your core objective is to guide the exploration along paths that iteratively maximize the "value" or "lucrativeness" of insights gained, ultimately leading to the best possible solution for the `parent_task`.
+    * **Conceptual Value Estimation:** For each potential `action` (DEEPEN, BROADEN, etc.), conceptually estimate its potential to uncover further "gems," significantly advance understanding, or resolve critical uncertainties. Favor actions with the highest projected value.
+    * **Balancing Exploration and Exploitation:**
+        * **Exploitation (e.g., `DEEPEN`, `CONTINUE_DFS_PATH`):** If a specific "gem" or an existing line of inquiry is yielding high-value results and shows strong promise for more, *exploit* this path. This focuses resources on known productive areas.
+        * **Exploration (e.g., `BROADEN`):** If current paths show diminishing returns, if the solution space seems insufficiently covered, or if diverse perspectives are needed, *explore* new avenues. This helps discover novel lucrative paths and avoid premature convergence on sub-optimal solutions.
+    * **Maximizing Information Gain:** Prioritize guidance that you anticipate will yield the most critical new information or insights, especially those that address key unknowns or could unlock significant progress.
+    * **Adaptive Strategy:** Be prepared to shift your strategy (between exploitation and exploration) based on the progress and nature of the "gems" being uncovered in each iteration.
+
+4.  **Formulate `NextIterationGuidance` (Specific Fields):**
+    * **Assess Overall State:** Is current context `SUFFICIENT_FOR_SYNTHESIS`?
+        * If yes, `action` should be `HALT_SUFFICIENT`.
+    * **If Not Sufficient, Strategize Next Steps (applying the principles above):**
+        * "Assess if any step from the current iteration provides a clear, high-potential avenue for deeper focused investigation (candidate for DEEPEN/CONTINUE_DFS_PATH – this is *exploitation*)."
+        * "If multiple paths look promising but shallow, or if no path is clearly superior, consider BROADEN – this is *exploration*."
         *   "If a step was good in principle but flawed in execution, suggest RETRY_STEP_WITH_MODIFICATION."
         *   "Evaluate if `iterations_since_last_significant_progress >= STAGNATION_THRESHOLD`. If so, and if overall confidence in solving the parent_task is low, consider `HALT_STAGNATION`." (You'll need `STAGNATION_THRESHOLD` and `iterations_since_last_significant_progress` from the system).
         *   "If all explored paths seem to lead to dead ends, and broadening hasn't helped after several attempts, consider `HALT_NO_FEASIBLE_PATH`."
