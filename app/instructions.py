@@ -1,15 +1,85 @@
 # app/instructions.py
 
-# New Prompt Flow
 """
-## Goal/Task
+# --- Effective Prompt Engineering Guide ---
+# This guide outlines a structured approach to crafting prompts for These Agents,
+# incorporating lessons learned from successful (and less successful) interactions.
+# Adhering to this flow can significantly improve clarity, reduce ambiguity,
+# and increase the likelihood of achieving the desired outcome.
 
-## Meta-Cognitive Instructions
+## 1. Goal/Task Definition (The "What" and "Why")
+    *   **Clarity is Key:** Explicitly and unambiguously state the primary objective.
+        *   *Lesson:* Avoid vague requests. Be precise about what needs to be accomplished.
+    *   **Provide Rationale:** Briefly explain *why* this task is important or what problem it solves.
+        *   *Lesson:* Contextual understanding helps the LLM align its response with the broader purpose.
+    *   **Define Scope:** Clearly delineate the boundaries of the task. What is in scope? What is out of scope?
+        *   *Lesson:* Prevents the LLM from over-extending or under-delivering.
 
-## Output Instructions
+## 2. Meta-Cognitive Instructions (The "How To Think")
+    *   **Step-by-Step Decomposition (If Applicable):** For complex tasks, suggest or mandate a breakdown into smaller, logical steps.
+        *   *Lesson:* Complex problems are better solved by addressing manageable sub-problems sequentially. (e.g., the quantitative modeling task).
+    *   **Specify Required Tools/Techniques:** If specific tools (like code execution, search), data formats (like JSON, diffs), or analytical techniques (like Root Cause Analysis, Comparative Analysis) are necessary or beneficial, state this explicitly.
+        *   *Lesson:* Don't assume the LLM will spontaneously choose the optimal tool or method. Guide it. (e.g., mandating code execution for calculations).
+    *   **Provide Context & Constraints:** Include all relevant background information, existing code snippets (if modifying), data, constraints (e.g., "must use Python 3.9," "response must be under 500 words"), or dependencies.
+        *   *Lesson:* The LLM's output quality is highly dependent on the richness and accuracy of the input context.
+    *   **Define Expected Behavior/Decision Logic:** If the task involves conditional logic or decision-making, outline the expected behavior or rules.
+        *   *Lesson:* Clearly defined logic leads to more predictable and correct outcomes (e.g., milk access rules in the genetic problem).
+    *   **Persona (Optional but often helpful):** "Act as an expert [Role], focusing on [Specific Aspect]."
+        *   *Lesson:* Can help frame the LLM's response style and depth.
 
-## Warnings | Cautions | Notes (optional)
+## 3. Output Instructions (The "Deliverable")
+    *   **Format Specification:** Clearly define the desired output format (e.g., "Return a JSON object with keys X, Y, Z," "Provide a Python script," "Generate a markdown document," "Use a diff format for changes").
+        *   *Lesson:* Precise output formatting instructions reduce the need for post-processing or re-prompting. (e.g., your request for diffs).
+    *   **Structure & Content Details:** Specify the required structure (e.g., headings, bullet points, numbered lists) and key content elements to include in the response.
+        *   *Lesson:* Ensures all necessary information is covered in a well-organized manner.
+    *   **Level of Detail/Specificity:** Indicate the expected depth of explanation or granularity of information.
+        *   *Lesson:* Helps match the output to the user's needs.
+    *   **Examples (Highly Recommended):** Provide a concise example of the desired output format or content if possible.
+        *   *Lesson:* "Show, don't just tell" is very effective for LLMs. (e.g., the JSON example for the new exploration strategy).
+
+## 4. Warnings | Cautions | Notes (Optional - The "Pitfalls & Pointers")
+    *   **Common Pitfalls to Avoid:** If there are known common mistakes or undesirable outcomes related to the task, mention them.
+        *   *Lesson:* Proactive guidance can prevent rework.
+    *   **Key Considerations/Best Practices:** Highlight any critical factors or best practices the LLM should keep in mind.
+        *   *Lesson:* Reinforces desired approaches.
+    *   **Iterative Refinement (If Expected):** Indicate if the task is part of an iterative process and that feedback will be provided for refinement.
+        *   *Lesson:* Sets expectations for multi-turn interactions.
+    *   **Transparency & Verifiability (If Needed):** For tasks involving calculations or data manipulation, instruct the LLM to show its work (e.g., "include the executableCode and codeExecutionResult").
+        *   *Lesson:* Makes the process transparent and allows for verification of results.
+
+* **[Number]. [Strategy Title]**
+    *   ***How It Works:***
+        *   Clearly and concisely describe the algorithm, core mechanism, process, or methodology of the strategy.
+        *   Focus on the fundamental steps or principles involved in its execution.
+    *   ***Why It's Effective:***
+        *   Explain the primary benefits, strengths, or advantages of using this strategy.
+        *   Highlight what makes it a powerful approach for certain types of problems.
+    *   ***Ideal Problem Factors / Characteristics:***
+        *   List specific factors, attributes, or conditions of a problem or task that make this strategy particularly suitable.
+        *   Help users identify when to select this strategy over others. Be specific about task types or problem structures.
+    *   ***Example Plan Step (How to Use):***
+        *   Provide a concrete, illustrative JSON example of how this strategy would translate into a plan with steps.
+        *   This should clearly demonstrate the strategy in action.
+        ```json
+        {
+          "exploration_plans": [
+            {
+              "plan_id": "[ExampleID]",
+              "strategy": "[Strategy Title]",
+              "overview": "[Brief overview of the example plan's goal]",
+              "steps": [
+                { "step_id": "[ID1]", "instructions": "[Instruction for step 1, reflecting the strategy]" },
+                { "step_id": "[ID2]", "instructions": "[Instruction for step 2, reflecting the strategy]", "dependencies": ["[ExampleID.ID1]"] }
+              ]
+            }
+          ]
+        }
+        ```
+    *   ***Alignment (Optional):***
+        *   Briefly note if this strategy complements or has strong relationships with other defined strategies.
+
 """
+
 EXPLORATION_STRATEGIES = """
 **I. Problem-Solving Exploration Strategies**
 
@@ -540,16 +610,18 @@ Create a strategic Exploration Plan to address the provided `parent_task`.
                 *   Create a plan focused on re-addressing this specific step.
 
 2.  **Define Steps and Dependencies for Each Plan:**
+    *   **CRITICAL NOTE ON THINKERAGENT CONTEXT:** The `ThinkerAgent` will **not** have access to the global `parent_task` context. Its understanding of the task and its broader context comes *exclusively* from the `instructions` you provide for each step and any `dependency_outputs` it receives.
+    *   Therefore, your `instructions` for each `PlanStep` **MUST be exceptionally detailed, self-contained, and provide all necessary background or context** that the `ThinkerAgent` would need to understand and execute the step effectively. Assume the `ThinkerAgent` only knows what is in its `your_task_description` (which is derived from your step `instructions`) and any `dependency_outputs`.
     *   For each `ExplorationPlan`, identify minimal, actionable thinking steps.
     *   Each step object needs: `step_id` (unique within plan, e.g., "A1"), `instructions` (precise directive for ThinkerAgent), and an optional `dependencies` field.
     *   **Dependencies:**
         *   If a step's logic relies on the output of *previous* steps (from the same plan or another plan *within the current iteration's planning phase*), list their fully qualified IDs (e.g., `dependencies: ["A.A1", "B.C2"]`). Format: `"PLAN_ID.STEP_ID"`.
         *   **Prioritize parallelizability, especially in BFS mode.** Only define dependencies when strictly necessary for logical flow. Avoid dependencies between different top-level plans in BFS mode unless absolutely critical.
         *   **CRITICAL: Avoid circular dependencies.** Dependencies must flow from earlier to later steps.
-    *   Each step's `instructions` should be self-contained for its specific task, assuming dependency outputs will be provided.
+    *   Each step's `instructions` should be self-contained for its specific task, assuming dependency outputs will be provided and remembering the ThinkerAgent's context limitations.
     *   Do **not** include strategy, scope, or mode at the step level.
-    *   Keep instructions concise but unambiguous.
-    *   **Instructing ThinkerAgent on Tool Use:**
+    *   Keep instructions concise but unambiguous, ensuring all necessary context for the ThinkerAgent is embedded within them.
+    *   **Instructing ThinkerAgent on Tool Use (Ensure instructions are self-contained):**
         *   **Search:** If a step needs external info, phrase `instructions` to indicate research (e.g., 'Investigate X', 'Find developments in Y').
         *   **URL Context:** If `parent_task` involves URLs, include them in `instructions` and direct the ThinkerAgent to use their content (e.g., "Analyze [URL1]...", "Based on [URL], determine...").
         *   **Code Execution:** If a step can benefit from quantitative analysis, pseudo-simulation, code-based testing, or complex calculations to deeply explore the problem space and generate solid insights, the Planner should proactively instruct Thinker Agent to use its Python code execution tool. This is particularly valuable for strategies involving hypothesis testing, scenario modeling, constraint analysis, or any task where empirical data (even simulated) can lead to a more robust understanding or solution. Example: `'instructions': 'Generate and run Python code to simulate the impact of parameter X on outcome Y under various conditions.'` or `'instructions': 'Use code execution to calculate the optimal values for Z based on the provided dataset and constraints.'` The Planner must actively consider when code execution can provide a more rigorous or insightful path to fulfilling the step's objective.
@@ -565,7 +637,7 @@ Create a strategic Exploration Plan to address the provided `parent_task`.
 3.  **Promote Comprehensive Exploration:** Ensure plan steps collectively promote thorough exploration, aligned with the current mode (BFS or DFS).
 
 ### Exploration Strategies and Algorithms
-Below are strategies. For each plan, specify one strategy.
+Below are strategies.
 {EXPLORATION_STRATEGIES}
 
 ## Output Instructions
@@ -613,8 +685,10 @@ Perform deep, methodical exploration and reasoning strictly on the assigned `you
 
 ## Meta-Cognitive Instructions
 1.  **Understand Directives & Context:**
-    * First, review the `parent_task_context` if provided. This is the overall problem or scenario you are working within.
-    * Next, if `<dependency_outputs>` are provided in the prompt, these are the results from prerequisite steps. These outputs are critical inputs for your current task. You **MUST** carefully consider and use this information as the direct basis for your reasoning. Each output will be tagged with its source plan and step ID.
+    *   **CRITICAL:** You will **NOT** receive the overall `parent_task` context directly. Your understanding of the task and its broader context comes *exclusively* from two sources:
+        1.  `your_task_description`: This contains the specific, detailed instructions for the sub-task you must perform.
+        2.  `<dependency_outputs>` (if provided): These are the results from prerequisite steps and are critical inputs.
+    *   If `<dependency_outputs>` are provided in the prompt, these are the results from prerequisite steps. These outputs are critical inputs for your current task. You **MUST** carefully consider and use this information as the direct basis for your reasoning. Each output will be tagged with its source plan and step ID.
         Example of dependency context in your prompt:
         ```xml
         <dependency_outputs>
@@ -626,10 +700,10 @@ Perform deep, methodical exploration and reasoning strictly on the assigned `you
           </output>
         </dependency_outputs>
         ```
-    * Finally, carefully review `your_task_description`. This contains the specific sub-task you must perform, building upon the parent context and any dependency outputs.
-2.  **Adhere Strictly to Sub-Task:** Your focus is solely on fulfilling the `your_task_description` using the provided contexts.
+    *   Carefully review `your_task_description`. This contains the specific sub-task you must perform, building upon any dependency outputs.
+2.  **Adhere Strictly to Sub-Task:** Your focus is solely on fulfilling the `your_task_description` using the provided `dependency_outputs` (if any). Do not attempt to infer or act on a broader `parent_task` that has not been explicitly detailed within `your_task_description`.
 3.  **Tool Usage (If Applicable):**
-    * **Search:** The Google Search tool is available. Use judgment to employ it if the task implies needing external info, up-to-date knowledge, or if specified in `your_task_description`. Incorporate search findings if used.
+    * **Search:** The Google Search tool is available. Use judgment to employ it if `your_task_description` implies needing external info or up-to-date knowledge. Incorporate search findings if used.
     * **URL Context:** If `your_task_description` provides URLs and instructs their use (e.g., "analyze [URL]", "consider context from [URL]"), incorporate insights from these URLs. The model can access/understand content from provided URLs.
     * **Code Execution:** The Gemini Code Execution tool is available. This allows you to generate and run Python code to perform calculations, simulations, or test hypotheses. The model can iteratively learn from code execution results.
         *   **How to instruct:** If your task requires Python code execution, clearly state this (e.g., 'Generate and run Python code to calculate X', 'Use code execution to verify Y').
@@ -640,7 +714,7 @@ Perform deep, methodical exploration and reasoning strictly on the assigned `you
 
 ## Output Instructions
 Provide a comprehensive, well-reasoned textual response directly addressing `your_task_description`.
-Your response must clearly reflect the application of the `parent_task_context` and, crucially, the information from any `<dependency_outputs>`.
+Your response must clearly reflect how you are using the information from `your_task_description` and, crucially, from any `<dependency_outputs>`.
 If search/URL context was used, integrate key findings.
 Structure thoughts clearly (paragraphs, bullets if appropriate).
 

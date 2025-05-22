@@ -155,18 +155,15 @@ class ThinkerAgent:
     def think(
         self,
         your_task_description: str,
-        parent_task_context: Optional[str] = None,
         dependency_outputs_context: Optional[str] = None,
     ) -> str:
         """
         Executes a specific task (a step in an exploration plan) using available tools.
+        The ThinkerAgent does NOT have direct access to the overall parent_task.
+        Its understanding comes solely from `your_task_description` and any `dependency_outputs_context`.
 
         The user_prompt is constructed by concatenating XML-like segments:
         ```
-        <parent_task_context>
-        The overall context of the main goal the user is trying to achieve.
-        </parent_task_context>
-
         <dependency_outputs>
           <output plan_id="PLAN_ID_OF_DEPENDENCY_1" step_id="STEP_ID_OF_DEPENDENCY_1">
             Output content from the first dependency step.
@@ -182,7 +179,6 @@ class ThinkerAgent:
         </your_task_description>
 
         Notes:
-        - <parent_task_context> is included if `parent_task_context` is provided.
         - <dependency_outputs> and its content are included if `dependency_outputs_context` is provided.
           This context itself is pre-formatted as an XML string.
         - <your_task_description> is always included.
@@ -190,8 +186,6 @@ class ThinkerAgent:
         ```
         """
         prompt_parts = []
-        if parent_task_context:
-            prompt_parts.append(f"<parent_task_context>{parent_task_context}</parent_task_context>")
         if dependency_outputs_context:
             prompt_parts.append(dependency_outputs_context)
         prompt_parts.append(f"<your_task_description>{your_task_description}</your_task_description>")
@@ -622,7 +616,6 @@ class DeepThinkingPipeline:
 
                     step_obj.response = self.thinker.think(
                         your_task_description=step_obj.instructions,
-                        parent_task_context=parent_task,
                         dependency_outputs_context=dependency_outputs_context_str
                     )
                     completed_step_outputs[step_qname] = step_obj.response or "No response recorded."
