@@ -2,7 +2,7 @@
 
 ## Overview
 
-Exploring the possibilty of making agents capable of iterative, reflective, and multi-path problem-solving, idea generation and question answering. To do this, I aim to design a system beyond simple prompt-response interactions or basic agentic loops, enabling a more profound and structured approach to tackling complex tasks, particularly those that are not primarily search intensive but require significant internal deliberation, strategic planning, and iterative refinement.
+This project implements a multi-agent system designed for iterative, reflective, and multi-path problem-solving, idea generation, and question answering. It moves beyond simple prompt-response interactions by employing a `DeepThinkingPipeline` composed of four distinct agents: a Planner, Thinker, Reviewer, and Synthesizer. This pipeline enables a structured approach to complex tasks that require significant internal deliberation, strategic planning, and iterative refinement. The Planner devises exploration strategies, the Thinker executes planned steps (managing dependencies and tool use), the Reviewer critically assesses progress and guides subsequent iterations, and the Synthesizer consolidates findings into a final solution. This architecture facilitates deep exploration and methodical reasoning, particularly for tasks not solely reliant on information retrieval.
 
 My original thoughts on this were:
 

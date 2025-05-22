@@ -1,4 +1,3 @@
-from enum import Enum
 from typing import List, Optional, Literal
 from pydantic import BaseModel, model_validator
 
@@ -9,6 +8,7 @@ from pydantic import BaseModel, model_validator
 class PlanStep(BaseModel):
     step_id: str
     instructions: str
+    dependencies: Optional[List[str]] = None
     response: Optional[str] = None
 
 class ExplorationPlan(BaseModel):

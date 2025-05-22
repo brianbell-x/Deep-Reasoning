@@ -6,14 +6,12 @@ import json
 
 T = TypeVar("T", bound=BaseModel)
 
-class GeminiAPIClient:
+class Client:
     """Centralizes Gemini API calls and cost tracking."""
-    FLASH = "gemini-2.5-flash-preview-05-20"
-    PRO = "gemini-2.5-pro-preview-05-06"
 
     # Flash pricing
     _IN_RATE = 0.15 / 1_000_000
-    _OUT_RATE = 0.60 / 1_000_000
+    _OUT_RATE = 3.50 / 1_000_000  # Updated to "thinking" output rate
 
     def __init__(self, api_key: str):
         self._client = genai.Client(api_key=api_key)
@@ -31,7 +29,6 @@ class GeminiAPIClient:
         schema: Optional[Type[T]] = None,
         tools: Optional[list[types.Tool]] = None,
     ) -> T | str:
-        # Build config for Gemini API
         gen_config_params: dict[str, Any] = {}
 
         if system_instruction:
@@ -103,7 +100,6 @@ class GeminiAPIClient:
                     f"Error: {type(e).__name__} - {e}."
                 ) from e
 
-        # Fallback for non-schema responses (plain text)
         try:
             return resp.text
         except AttributeError:

@@ -1,16 +1,16 @@
 import os
 import sys
 import json
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple, Set
 import dotenv
-
+dotenv.load_dotenv()
 from app.instructions import (
     PLANNER_INSTRUCTIONS,
     THINKER_INSTRUCTIONS,
     REVIEWER_INSTRUCTIONS,
     SYNTHESIZER_INSTRUCTIONS,
 )
-from app.client import GeminiAPIClient
+from app.client import Client
 from app.schemas import (
     PlannerOut,
     ReviewerOut,
@@ -19,8 +19,7 @@ from app.schemas import (
     PlanStep,
     ContextSelection,
 )
-from google.genai.types import Tool, GoogleSearch  # Corrected import
-dotenv.load_dotenv()
+from google.genai.types import Tool, GoogleSearch
 
 
 class BColors:
@@ -54,7 +53,8 @@ class PlannerAgent:
         user_prompt = "\n\n".join(prompt_parts)
 
         print(
-            f"\n{BColors.OKCYAN}[PlannerAgent]{BColors.ENDC} Instructions:\n"
+            f"\n{BColors.OKCYAN}[PlannerAgent]{BColors.ENDC} Instructions (snippet):\n"
+            f"{self.INSTRUCTIONS[:500]}...\n"
         )
         print(
             f"{BColors.OKCYAN}[PlannerAgent]{BColors.ENDC} User Prompt:\n"
@@ -91,13 +91,17 @@ class ThinkerAgent:
         self,
         your_task_description: str,
         parent_task_context: Optional[str] = None,
+        dependency_outputs_context: Optional[str] = None,
     ) -> str:
-        prompt_parts = [f"<your_task_description>{your_task_description}</your_task_description>"]
+        prompt_parts = []
         if parent_task_context:
             prompt_parts.append(f"<parent_task_context>{parent_task_context}</parent_task_context>")
+        if dependency_outputs_context:
+            prompt_parts.append(dependency_outputs_context)
+        prompt_parts.append(f"<your_task_description>{your_task_description}</your_task_description>")
         user_prompt = "\n\n".join(prompt_parts)
 
-        tools_to_use = [Tool(google_search=GoogleSearch())]  # Use GoogleSearch for Gemini 2.0+
+        tools_to_use = [Tool(google_search=GoogleSearch())]
 
         print(
             f"{BColors.OKCYAN}[ThinkerAgent]{BColors.ENDC} User Prompt:\n"
@@ -142,7 +146,9 @@ class ReviewerAgent:
         ]
         user_prompt = "\n\n".join(prompt_parts)
 
-        print(f"\n{BColors.OKCYAN}[ReviewerAgent]{BColors.ENDC} Instructions:\n")
+        print(f"\n{BColors.OKCYAN}[ReviewerAgent]{BColors.ENDC} Instructions (snippet):\n"
+              f"{self.INSTRUCTIONS[:500]}...\n"
+        )
         print(
             f"{BColors.OKCYAN}[ReviewerAgent]{BColors.ENDC} User Prompt:\n"
             f"{BColors.WARNING}{user_prompt}{BColors.ENDC}"
@@ -194,11 +200,8 @@ class SynthesizerAgent:
             cycle_summary = f"--- Iteration {i+1} ---\n"
 
             plans_with_responses_obj: List[ExplorationPlan] = cycle.get('plans_with_responses', [])
-            plans_json = json.dumps(
-                [p.model_dump(exclude_none=True) for p in plans_with_responses_obj],
-                indent=1,
-            )
-            # Show full plans_json, do not truncate
+            plans_data_for_json = [p.model_dump(exclude_none=True) for p in plans_with_responses_obj]
+            plans_json = json.dumps(plans_data_for_json, indent=1)
             cycle_summary += f"Plans & Responses: {plans_json}\n"
 
             review_obj: Optional[ReviewerOut] = cycle.get('review')
@@ -207,7 +210,6 @@ class SynthesizerAgent:
                 if review_obj.next_iteration_guidance:
                     cycle_summary += f"Reviewer Guidance Action for Next Iteration: {review_obj.next_iteration_guidance.action}\n"
                     cycle_summary += f"Reviewer Reasoning: {review_obj.next_iteration_guidance.reasoning}\n"
-
                 if i == len(full_history) - 1:
                     final_context_to_use = review_obj.context_to_use
             else:
@@ -224,23 +226,24 @@ class SynthesizerAgent:
 
         if final_context_to_use:
             selected_responses_parts = ["<selected_step_responses>"]
-            all_step_responses: Dict[tuple[str, str], str] = {}
+            all_step_responses: Dict[str, str] = {}
             for cycle_data in full_history:
                 plans_obj_list: List[ExplorationPlan] = cycle_data.get('plans_with_responses', [])
                 for plan_obj in plans_obj_list:
                     for step_obj in plan_obj.steps:
-                        key = (plan_obj.plan_id, step_obj.step_id)
+                        key = f"{plan_obj.plan_id}.{step_obj.step_id}"
                         all_step_responses[key] = step_obj.response or "N/A"
 
             for selection_group in final_context_to_use:
                 plan_id = selection_group.plan_id
                 for step_id in selection_group.step_ids:
+                    q_step_id = f"{plan_id}.{step_id}"
                     response_text = all_step_responses.get(
-                        (plan_id, step_id),
+                        q_step_id,
                         "Response not found for this step in history.",
                     )
                     selected_responses_parts.append(
-                        f"<step_response plan_id='{plan_id}' step_id='{step_id}'>\n{response_text}\n</step_response>"
+                        f'<step_response plan_id="{plan_id}" step_id="{step_id}">\n{response_text}\n</step_response>'
                     )
 
             selected_responses_parts.append("</selected_step_responses>")
@@ -249,7 +252,9 @@ class SynthesizerAgent:
 
         user_prompt = "\n\n".join(prompt_parts)
 
-        print(f"\n{BColors.OKCYAN}[SynthesizerAgent]{BColors.ENDC} Instructions:\n")
+        print(f"\n{BColors.OKCYAN}[SynthesizerAgent]{BColors.ENDC} Instructions (snippet):\n"
+              f"{self.INSTRUCTIONS[:500]}...\n"
+        )
         print(
             f"{BColors.OKCYAN}[SynthesizerAgent]{BColors.ENDC} User Prompt:\n"
             f"{BColors.WARNING}{user_prompt}{BColors.ENDC}"
@@ -275,8 +280,9 @@ class DeepThinkingPipeline:
         max_iterations: Optional[int] = None,
         stagnation_threshold: Optional[int] = None,
     ):
-        self.client = GeminiAPIClient(api_key=api_key)
-        model = "gemini-2.5-flash-preview-05-20"
+        self.client = Client(api_key=api_key)
+        #model = "gemini-2.5-flash-preview-05-20"
+        model = "gemini-2.5-pro-preview-05-06"
         self.planner = PlannerAgent(self.client, model)
         self.thinker = ThinkerAgent(self.client, model)
         self.reviewer = ReviewerAgent(self.client, model)
@@ -302,7 +308,6 @@ class DeepThinkingPipeline:
                         if s_hist.step_id == step_id:
                             details["original_instruction"] = s_hist.instructions
                             details["previous_output"] = s_hist.response or "No response recorded."
-                            # Show full previous_output, do not truncate
                             return details
         return details
 
@@ -314,10 +319,6 @@ class DeepThinkingPipeline:
 
         while True:
             current_iteration += 1
-            print(
-                f"\n{BColors.HEADER}--- Starting Iteration {current_iteration}/{self.MAX_ITERATIONS} ---{BColors.ENDC}"
-            )
-
             guidance_prompt_segment: Optional[str] = None
             if previous_review_guidance:
                 action = previous_review_guidance.action
@@ -357,7 +358,6 @@ class DeepThinkingPipeline:
                     guidance_text_parts.append(
                         f"Suggested modifications or focus: {previous_review_guidance.suggested_modifications_or_focus}"
                     )
-
                 if action == "BROADEN":
                     if previous_review_guidance.excluded_strategies:
                         guidance_text_parts.append(
@@ -367,15 +367,13 @@ class DeepThinkingPipeline:
                         guidance_text_parts.append(
                             f"New strategy suggestion: {previous_review_guidance.new_strategy_suggestion}"
                         )
-
                 if action == "CONTINUE_DFS_PATH" and previous_review_guidance.current_dfs_path_summary:
                     guidance_text_parts.append(
                         f"Current DFS path summary: {previous_review_guidance.current_dfs_path_summary}"
                     )
-
                 guidance_prompt_segment = "\n".join(guidance_text_parts)
 
-            exploration_plans = self.planner.generate_plan(parent_task, guidance_prompt_segment)
+            exploration_plans: List[ExplorationPlan] = self.planner.generate_plan(parent_task, guidance_prompt_segment)
 
             if not exploration_plans:
                 print(f"{BColors.FAIL}[Pipeline] Planner returned no new plans.{BColors.ENDC}")
@@ -384,20 +382,74 @@ class DeepThinkingPipeline:
                         f"{BColors.FAIL}Error: Planner failed to generate an initial plan and there's no history. Cannot proceed.{BColors.ENDC}"
                     )
                 print(
-                    f"{BColors.OKCYAN}[Pipeline]{BColors.ENDC} No new plans generated. Proceeding to synthesize with available history."
+                    f"{BColors.OKCYAN}[Pipeline]{BColors.ENDC} No new plans generated by Planner. Proceeding to synthesize with available history or halt based on Reviewer."
                 )
-                break
 
-            for plan in exploration_plans:
-                for step in plan.steps:
-                    display = f"Plan {plan.plan_id}-{step.step_id}: {step.instructions}"
-                    # Show full display, do not truncate
-                    print(
-                        f"\n{BColors.OKCYAN}[ThinkerAgent]{BColors.ENDC}: Processing -> \"{display}\""
-                    )
-                    step.response = self.thinker.think(
-                        step.instructions, parent_task_context=parent_task
-                    )
+            all_steps_to_process: List[Tuple[ExplorationPlan, PlanStep]] = []
+            for plan_obj in exploration_plans:
+                for step_obj in plan_obj.steps:
+                    all_steps_to_process.append((plan_obj, step_obj))
+
+            completed_step_outputs: Dict[str, str] = {}
+            executed_step_qnames: Set[str] = set()
+            max_passes = len(all_steps_to_process) + 1
+
+            for pass_num in range(max_passes):
+                executed_in_this_pass = 0
+
+                if len(executed_step_qnames) == len(all_steps_to_process):
+                    break
+
+                for plan_obj, step_obj in all_steps_to_process:
+                    step_qname = f"{plan_obj.plan_id}.{step_obj.step_id}"
+                    if step_qname in executed_step_qnames:
+                        continue
+
+                    dependencies_met = True
+                    if step_obj.dependencies:
+                        for dep_qname in step_obj.dependencies:
+                            if dep_qname not in completed_step_outputs:
+                                dependencies_met = False
+                                break
+
+                    if dependencies_met:
+                        display_instr = step_obj.instructions[:100] + "..." if len(step_obj.instructions) > 100 else step_obj.instructions
+                        print(f"\n{BColors.OKCYAN}[ThinkerAgent]{BColors.ENDC}: Processing -> Plan {plan_obj.plan_id}-{step_obj.step_id}: \"{display_instr}\"")
+
+                        dependency_outputs_context_str = ""
+                        if step_obj.dependencies:
+                            dep_outputs_xml_parts = ["<dependency_outputs>"]
+                            for dep_qname in step_obj.dependencies:
+                                p_id, s_id = dep_qname.split('.', 1)
+                                dep_output_content = completed_step_outputs.get(dep_qname, "Error: Dependency output not found!")
+                                dep_outputs_xml_parts.append(
+                                    f'  <output plan_id="{p_id}" step_id="{s_id}">\n'
+                                    f"    {dep_output_content}\n"
+                                    f'  </output>'
+                                )
+                            dep_outputs_xml_parts.append("</dependency_outputs>")
+                            dependency_outputs_context_str = "\n".join(dep_outputs_xml_parts)
+
+                        step_obj.response = self.thinker.think(
+                            your_task_description=step_obj.instructions,
+                            parent_task_context=parent_task,
+                            dependency_outputs_context=dependency_outputs_context_str
+                        )
+                        completed_step_outputs[step_qname] = step_obj.response or "No response recorded."
+                        executed_step_qnames.add(step_qname)
+                        executed_in_this_pass += 1
+
+                if executed_in_this_pass == 0 and len(executed_step_qnames) < len(all_steps_to_process):
+                    pending_qnames = [f"{p.plan_id}.{s.step_id}" for p, s in all_steps_to_process if f"{p.plan_id}.{s.step_id}" not in executed_step_qnames]
+                    print(f"{BColors.FAIL}[Pipeline] Error: Could not execute any more steps in pass {pass_num + 1}. Possible circular dependency or unmet/invalid dependency. Pending: {pending_qnames}{BColors.ENDC}")
+                    break
+
+            if len(executed_step_qnames) < len(all_steps_to_process):
+                unexecuted_count = len(all_steps_to_process) - len(executed_step_qnames)
+                print(f"{BColors.WARNING}[Pipeline] Warning: Not all steps were executed. {unexecuted_count} steps remain pending due to unmet dependencies or errors.{BColors.ENDC}")
+            else:
+                if all_steps_to_process:
+                    print(f"{BColors.OKGREEN}[Pipeline] All {len(all_steps_to_process)} steps executed successfully or attempted.{BColors.ENDC}")
 
             review_obj: ReviewerOut = self.reviewer.review(
                 parent_task,
@@ -478,16 +530,15 @@ def main():
         print(f"{BColors.FAIL}Error: No main task provided. Exiting.{BColors.ENDC}")
         sys.exit(1)
 
-    max_iterations = DeepThinkingPipeline.MAX_ITERATIONS
-    stagnation_threshold = DeepThinkingPipeline.STAGNATION_THRESHOLD
+    max_iterations_override = DeepThinkingPipeline.MAX_ITERATIONS
+    stagnation_threshold_override = DeepThinkingPipeline.STAGNATION_THRESHOLD
 
     pipeline = DeepThinkingPipeline(
         api_key=api_key,
-        max_iterations=max_iterations,
-        stagnation_threshold=stagnation_threshold,
+        max_iterations=max_iterations_override,
+        stagnation_threshold=stagnation_threshold_override,
     )
-    final_answer = pipeline.run(parent_task_input)
-    # Optionally print or return final_answer if needed
+    pipeline.run(parent_task_input)
 
 
 if __name__ == "__main__":
