@@ -4,9 +4,6 @@ import json
 from typing import Optional, List, Dict, Any, Tuple, Set
 from pydantic import BaseModel # Added for _log_agent_activity
 import dotenv
-from prompt_toolkit import PromptSession
-from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.keys import Keys
 dotenv.load_dotenv()
 from app.instructions import (
     PLANNER_INSTRUCTIONS,
@@ -325,8 +322,8 @@ class DeepThinkingPipeline:
         stagnation_threshold: Optional[int] = None,
     ):
         self.client = Client(api_key=api_key)
-        model = "gemini-2.5-flash-preview-05-20"
-        #model = "gemini-2.5-pro-preview-05-06"
+        #model = "gemini-2.5-flash-preview-05-20"
+        model = "gemini-2.5-pro-preview-05-06"
         self.planner = PlannerAgent(self.client, model)
         self.thinker = ThinkerAgent(self.client, model)
         self.reviewer = ReviewerAgent(self.client, model)
@@ -551,22 +548,7 @@ def main():
         print(f"{BColors.FAIL}Error: GEMINI_API_KEY not found in environment variables.{BColors.ENDC}")
         sys.exit(1)
 
-    # Setup key bindings for Ctrl+Enter to submit
-    kb = KeyBindings()
-    @kb.add(Keys.ControlJ)
-    def _(event):
-        event.app.exit(result=event.current_buffer.text)
-
-    session = PromptSession(key_bindings=kb, multiline=True)
-    
-    print(f"{BColors.BOLD}USER > {BColors.ENDC} (Enter your main task. Press Ctrl+Enter to submit):")
-    try:
-        parent_task_input = session.prompt().strip()
-    except EOFError: # Handle Ctrl+D or other EOF signals gracefully
-        print(f"\n{BColors.WARNING}Input cancelled. Exiting.{BColors.ENDC}")
-        sys.exit(0)
-
-
+    parent_task_input = input(f"{BColors.BOLD}USER > {BColors.ENDC}").strip()
     if not parent_task_input:
         print(f"{BColors.FAIL}Error: No main task provided. Exiting.{BColors.ENDC}")
         sys.exit(1)

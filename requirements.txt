@@ -1,5 +1,5 @@
 google-genai>=0.6.0
 pydantic>=2.0
 rich
+pprint
 datasets
-prompt_toolkit>=3.0.0
