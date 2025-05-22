@@ -7,18 +7,10 @@ import json
 T = TypeVar("T", bound=BaseModel)
 
 class Client:
-    """Centralizes Gemini API calls and cost tracking."""
-
-    # Flash pricing
-    _IN_RATE = 0.15 / 1_000_000
-    _OUT_RATE = 3.50 / 1_000_000  # Updated to "thinking" output rate
+    """Centralizes Gemini API calls."""
 
     def __init__(self, api_key: str):
         self._client = genai.Client(api_key=api_key)
-        self._total_cost = 0.0
-
-    def total_cost(self) -> float:
-        return self._total_cost
 
     def call(
         self,
@@ -48,7 +40,6 @@ class Client:
             contents=user_prompt,
             config=config,
         )
-        self._accumulate_cost(resp)
 
         if schema:
             try:
@@ -121,12 +112,3 @@ class Client:
 
     def synthesizer_call(self, model: str, instructions: str, user_prompt: str) -> str:
         return self.call(model=model, system_instruction=instructions, user_prompt=user_prompt)
-
-    def _accumulate_cost(self, resp):
-        usage = getattr(resp, "usage_metadata", None)
-        if not usage:
-            return
-        inp = getattr(usage, "prompt_token_count", 0)
-        outp = getattr(usage, "candidates_token_count", 0)
-        cost = (inp * self._IN_RATE) + (outp * self._OUT_RATE)
-        self._total_cost += cost

@@ -719,7 +719,6 @@ class DeepThinkingPipeline:
         if not full_history:
             return f"{BColors.FAIL}Error: No history was generated. Cannot synthesize.{BColors.ENDC}"
 
-        _log_agent_activity("Pipeline", "Total model cost", f"${self.client.total_cost():.4f}", color=BColors.HEADER)
         return self.synthesizer.synthesize(parent_task, full_history)
 
 def main():
