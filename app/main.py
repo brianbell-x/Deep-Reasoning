@@ -114,7 +114,7 @@ class PlannerAgent:
         - Suggested modifications or focus.
         - Excluded strategies or new strategy suggestions for BROADEN.
         - Current DFS path summary for CONTINUE_DFS_PATH.
-        </previous_review_guidance_details>
+        </review_guidance>
 
         Note: The <review_guidance> tag and its content are only included
         if `review_guidance_str` is provided.
@@ -122,7 +122,7 @@ class PlannerAgent:
         """
         prompt_parts = [("parent_task", parent_task)]
         if review_guidance_str:
-            prompt_parts.append(("previous_review_guidance_details", review_guidance_str))
+            prompt_parts.append(("review_guidance", review_guidance_str))
         user_prompt = _build_prompt_xml_style(prompt_parts)
 
         _log_agent_activity("PlannerAgent", "Instructions (snippet)", self.INSTRUCTIONS, color=BColors.OKCYAN, snippet_length=500)
@@ -226,7 +226,7 @@ class ReviewerAgent:
         parent_task: str,
         plans_with_responses: List[ExplorationPlan],
         current_iteration: int,
-        iterations_since_last_significant_progress: int,
+        iterations_no_progress: int,
         STAGNATION_THRESHOLD: int,
     ) -> ReviewerOut:
         """
@@ -245,7 +245,7 @@ class ReviewerAgent:
 
         <iterations_no_progress>
         Integer count of iterations since the last time significant progress (new context gems) was made.
-        </iterations_since_last_significant_progress>
+        </iterations_no_progress>
 
         <plans_with_responses>
         A JSON string representing a list of ExplorationPlan objects, including their steps and responses.
@@ -282,7 +282,7 @@ class ReviewerAgent:
             ("parent_task", parent_task),
             ("current_iteration", str(current_iteration)),
             ("STAGNATION_THRESHOLD", str(STAGNATION_THRESHOLD)),
-            ("iterations_since_last_significant_progress", str(iterations_since_last_significant_progress)),
+            ("iterations_no_progress", str(iterations_no_progress)),
             ("plans_with_responses", plans_json),
         ]
         user_prompt = _build_prompt_xml_style(prompt_parts)
@@ -344,7 +344,7 @@ class SynthesizerAgent:
         Plans & Responses: [JSON representation of ExplorationPlan objects for iteration 2]
         Review Assessment for this Iteration: ...
         ... and so on for all iterations.
-        </full_history_summary>
+        </process_history>
 
         <selected_step_responses>
         <step_response plan_id="PLAN_ID_1" step_id="STEP_ID_A">
@@ -366,11 +366,11 @@ class SynthesizerAgent:
         - The segments are joined by double newlines.
         ```
         """
-        process_history_str, final_selected_context = self._build_full_history_summary(full_history)
+        process_history_str, final_selected_context = self._build_process_history(full_history)
         
         prompt_parts = [
             ("parent_task", parent_task),
-            ("full_history_summary", f"\n{process_history_str}\n"),
+            ("process_history", f"\n{process_history_str}\n"),
         ]
 
         selected_responses_segment = self._build_selected_responses_segment(final_selected_context, full_history)
@@ -395,7 +395,7 @@ class SynthesizerAgent:
         _log_agent_activity("SynthesizerAgent", "Final Solution", response_str, color=BColors.OKGREEN)
         return response_str
 
-    def _build_full_history_summary(self, full_history: List[Dict[str, Any]]) -> Tuple[str, Optional[List[ContextSelection]]]:
+    def _build_process_history(self, full_history: List[Dict[str, Any]]) -> Tuple[str, Optional[List[ContextSelection]]]:
         history_summary_parts = []
         final_selected_context: Optional[List[ContextSelection]] = None
 
@@ -451,11 +451,11 @@ class SynthesizerAgent:
     def synthesize(
         self, parent_task: str, full_history: List[Dict[str, Any]]
     ) -> str:
-        process_history_str, final_selected_context = self._build_full_history_summary(full_history)
+        process_history_str, final_selected_context = self._build_process_history(full_history)
         
         prompt_parts = [
             ("parent_task", parent_task),
-            ("full_history_summary", f"\n{process_history_str}\n"),
+            ("process_history", f"\n{process_history_str}\n"),
         ]
 
         selected_responses_segment = self._build_selected_responses_segment(final_selected_context, full_history)
@@ -667,7 +667,7 @@ class DeepThinkingPipeline:
         full_history: List[Dict[str, Any]] = []
         previous_review_guidance: Optional[NextIterationGuidance] = None
         current_iteration = 0
-        iterations_since_last_significant_progress = 0
+        iterations_no_progress = 0
 
         while True:
             current_iteration += 1
@@ -686,7 +686,7 @@ class DeepThinkingPipeline:
                 parent_task,
                 updated_exploration_plans,
                 current_iteration,
-                iterations_since_last_significant_progress,
+                iterations_no_progress,
                 self.STAGNATION_THRESHOLD,
             )
 
@@ -702,11 +702,11 @@ class DeepThinkingPipeline:
             _log_agent_activity("ReviewerAgent", f"Next Action: {next_guidance.action}", f"Reason: {next_guidance.reasoning}", color=BColors.BOLD)
 
             if review_obj.selected_context:
-                iterations_since_last_significant_progress = 0
+                iterations_no_progress = 0
                 _log_agent_activity("Pipeline", "Significant progress detected (new gems found). Resetting stagnation counter.", "", color=BColors.OKCYAN)
             else:
-                iterations_since_last_significant_progress += 1
-                _log_agent_activity("Pipeline", f"No new gems. Iterations since last significant progress: {iterations_since_last_significant_progress}", "", color=BColors.OKCYAN)
+                iterations_no_progress += 1
+                _log_agent_activity("Pipeline", f"No new gems. Iterations since last significant progress: {iterations_no_progress}", "", color=BColors.OKCYAN)
 
             if next_guidance.action in ["HALT_SUFFICIENT", "HALT_STAGNATION", "HALT_NO_FEASIBLE_PATH"] or \
                review_obj.iteration_assessment == "ERROR_IN_REVIEW_PROCESSING":

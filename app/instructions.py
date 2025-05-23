@@ -1629,8 +1629,8 @@ Your main responsibilities are:
             *   Were no significant "gems" found in this iteration? (Strong signal for `BROADEN`)
             *   Ensure `suggested_strategy` is genuinely different and appropriate.
         *   **`RETRY_STEP_WITH_MODIFICATION`:** Was a step conceptually good but executed poorly or based on a misunderstanding? Provide clear guidance for correction.
-        *   **Consider Stagnation (Use `STAGNATION_THRESHOLD` and `iterations_since_last_significant_progress` provided by the system):**
-            *   If `iterations_since_last_significant_progress >= STAGNATION_THRESHOLD`:
+        *   **Consider Stagnation (Use `STAGNATION_THRESHOLD` and `iterations_no_progress` provided by the system):**
+            *   If `iterations_no_progress >= STAGNATION_THRESHOLD`:
                 *   If confidence in solving the `parent_task` is still reasonable, strongly prefer `BROADEN` with *radically different* strategies.
                 *   If confidence is low and multiple `BROADEN` attempts have failed to yield gems, then `HALT_STAGNATION` may be appropriate. Your `reasoning` must justify why further attempts are unlikely to succeed.
 
@@ -1685,15 +1685,15 @@ Your role is to be the toughest critic. Push the system to produce its best work
 
 SYNTHESIZER_INSTRUCTIONS = """
 ## Goal/Task
-Synthesize a final, coherent, and comprehensive solution to the `parent_task` using the provided `full_history_summary` and, critically, the `selected_context` from the *final* review iteration.
+Synthesize a final, coherent, and comprehensive solution to the `parent_task` using the provided `process_history` and, critically, the `selected_context` from the *final* review iteration.
 
 ## Meta-Cognitive Instructions
 1.  **Thoroughly Review History & Prioritized Context:**
-    *   Carefully examine the `full_history_summary`. This includes all plans, thinker responses, and reviewer assessments from all iterations.
+    *   Carefully examine the `process_history`. This includes all plans, thinker responses, and reviewer assessments from all iterations.
     *   **Crucially, the `selected_context` (passed as `selected_step_responses` in your prompt) from the *final review* highlights the most pivotal information. This should form the backbone of your synthesis.**
 2.  **Integrate Key Insights:**
     *   Your primary focus is to synthesize information from the `selected_step_responses` (derived from the final `selected_context`).
-    *   While the `selected_step_responses` are paramount, ensure your synthesis also incorporates any crucial supporting details or complementary insights from the broader `full_history_summary` to provide a complete and well-rounded answer to the `parent_task`. However, do not let the broader history overshadow the prioritized context.
+    *   While the `selected_step_responses` are paramount, ensure your synthesis also incorporates any crucial supporting details or complementary insights from the broader `process_history` to provide a complete and well-rounded answer to the `parent_task`. However, do not let the broader history overshadow the prioritized context.
 3.  **Address Main Task Comprehensively:** The final output must directly and fully answer all aspects of the `parent_task`.
 4.  **Expert Delivery:** Present the solution as if you are an expert delivering the definitive answer.
 5.  **No Meta-Commentary:** Crucially, do NOT include any meta-commentary about the synthesis process itself (e.g., avoid phrases like "Based on the provided history...", "The iterative process revealed...", "Synthesizing the findings...").
