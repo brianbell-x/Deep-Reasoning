@@ -156,20 +156,22 @@ class ThinkerAgent:
         self,
         your_task_description: str,
         dependency_outputs_context: Optional[str] = None,
+        overall_parent_task_context: Optional[str] = None,
     ) -> str:
         """
         Executes a specific task (a step in an exploration plan) using available tools.
-        The ThinkerAgent does NOT have direct access to the overall parent_task.
-        Its understanding comes solely from `your_task_description` and any `dependency_outputs_context`.
+        The ThinkerAgent's understanding comes from `your_task_description`,
+        any `dependency_outputs_context`, and the `overall_parent_task_context` (if available).
 
         The user_prompt is constructed by concatenating XML-like segments:
         ```
+        <overall_parent_task>
+        The overall parent task for the entire job, if one exists.
+        </overall_parent_task>
+
         <dependency_outputs>
           <output plan_id="PLAN_ID_OF_DEPENDENCY_1" step_id="STEP_ID_OF_DEPENDENCY_1">
             Output content from the first dependency step.
-          </output>
-          <output plan_id="PLAN_ID_OF_DEPENDENCY_2" step_id="STEP_ID_OF_DEPENDENCY_2">
-            Output content from the second dependency step.
           </output>
           ...
         </dependency_outputs>
@@ -179,17 +181,22 @@ class ThinkerAgent:
         </your_task_description>
 
         Notes:
+        - <overall_parent_task> is included if `overall_parent_task_context` is provided.
         - <dependency_outputs> and its content are included if `dependency_outputs_context` is provided.
           This context itself is pre-formatted as an XML string.
         - <your_task_description> is always included.
         - The segments are joined by double newlines.
         ```
         """
-        prompt_parts = []
+        prompt_elements = []
+        if overall_parent_task_context:
+            prompt_elements.append(f"<overall_parent_task>{overall_parent_task_context}</overall_parent_task>")
         if dependency_outputs_context:
-            prompt_parts.append(dependency_outputs_context)
-        prompt_parts.append(f"<your_task_description>{your_task_description}</your_task_description>")
-        user_prompt = "\n\n".join(prompt_parts)
+            # Assuming dependency_outputs_context is already a well-formed XML string
+            prompt_elements.append(dependency_outputs_context)
+        prompt_elements.append(f"<your_task_description>{your_task_description}</your_task_description>")
+        
+        user_prompt = "\n\n".join(prompt_elements)
 
         tools_to_use = [
             Tool(google_search=GoogleSearch()),
@@ -613,10 +620,12 @@ class DeepThinkingPipeline:
                             )
                         dep_outputs_xml_parts.append("</dependency_outputs>")
                         dependency_outputs_context_str = "\n".join(dep_outputs_xml_parts)
-
+                    
+                    # Always pass the parent_task to the thinker
                     step_obj.response = self.thinker.think(
                         your_task_description=step_obj.instructions,
-                        dependency_outputs_context=dependency_outputs_context_str
+                        dependency_outputs_context=dependency_outputs_context_str if step_obj.dependencies else None,
+                        overall_parent_task_context=parent_task
                     )
                     completed_step_outputs[step_qname] = step_obj.response or "No response recorded."
                     executed_step_qnames.add(step_qname)
