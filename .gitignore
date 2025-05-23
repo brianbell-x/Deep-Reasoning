@@ -3,3 +3,5 @@ trash
 misc
 papers
 .clinerules
+__pycache__/
+**/__pycache__/
