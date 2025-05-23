@@ -13,7 +13,6 @@
     *   **Specify Tools/Formats:** List required tools, data formats, or methods (e.g., code execution, JSON, analysis type).
     *   **Provide Context & Constraints:** Supply all relevant background, code, data, constraints, or dependencies.
     *   **Define Logic:** Outline expected behaviors, rules, or decision criteria.
-    *   **Persona (Optional):** Assign a role or expertise focus if helpful.
 
 ## 3. Output Instructions (Deliverable)
     *   **Format:** Specify the required output format (e.g., JSON, script, markdown, diff).
