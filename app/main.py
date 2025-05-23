@@ -94,7 +94,7 @@ class PlannerAgent:
     def generate_plan(
         self,
         parent_task: str,
-        previous_review_guidance_details_str: Optional[str] = None,
+        review_guidance_str: Optional[str] = None,
     ) -> List[ExplorationPlan]:
         """
         Generates exploration plans based on the parent task and optional previous review guidance.
@@ -104,7 +104,7 @@ class PlannerAgent:
         ```
         <parent_task>The main goal or problem to be solved.</parent_task>
 
-        <previous_review_guidance_details>
+        <review_guidance>
         Guidance from the ReviewerAgent from the previous iteration.
         This can include:
         - Reviewer's reasoning for the guidance.
@@ -116,13 +116,13 @@ class PlannerAgent:
         - Current DFS path summary for CONTINUE_DFS_PATH.
         </previous_review_guidance_details>
 
-        Note: The <previous_review_guidance_details> tag and its content are only included
-        if `previous_review_guidance_details_str` is provided.
+        Note: The <review_guidance> tag and its content are only included
+        if `review_guidance_str` is provided.
         ```
         """
         prompt_parts = [("parent_task", parent_task)]
-        if previous_review_guidance_details_str:
-            prompt_parts.append(("previous_review_guidance_details", previous_review_guidance_details_str))
+        if review_guidance_str:
+            prompt_parts.append(("previous_review_guidance_details", review_guidance_str))
         user_prompt = _build_prompt_xml_style(prompt_parts)
 
         _log_agent_activity("PlannerAgent", "Instructions (snippet)", self.INSTRUCTIONS, color=BColors.OKCYAN, snippet_length=500)
@@ -154,13 +154,13 @@ class ThinkerAgent:
 
     def think(
         self,
-        your_task_description: str,
+        step_instructions: str,
         dependency_outputs_context: Optional[str] = None,
         overall_parent_task_context: Optional[str] = None,
     ) -> str:
         """
         Executes a specific task (a step in an exploration plan) using available tools.
-        The ThinkerAgent's understanding comes from `your_task_description`,
+        The ThinkerAgent's understanding comes from `step_instructions`,
         any `dependency_outputs_context`, and the `overall_parent_task_context` (if available).
 
         The user_prompt is constructed by concatenating XML-like segments:
@@ -176,15 +176,15 @@ class ThinkerAgent:
           ...
         </dependency_outputs>
 
-        <your_task_description>
+        <step_instructions>
         Specific instructions for the current step/task this ThinkerAgent instance needs to perform.
-        </your_task_description>
+        </step_instructions>
 
         Notes:
         - <overall_parent_task> is included if `overall_parent_task_context` is provided.
         - <dependency_outputs> and its content are included if `dependency_outputs_context` is provided.
           This context itself is pre-formatted as an XML string.
-        - <your_task_description> is always included.
+        - <step_instructions> is always included.
         - The segments are joined by double newlines.
         ```
         """
@@ -194,7 +194,7 @@ class ThinkerAgent:
         if dependency_outputs_context:
             # Assuming dependency_outputs_context is already a well-formed XML string
             prompt_elements.append(dependency_outputs_context)
-        prompt_elements.append(f"<your_task_description>{your_task_description}</your_task_description>")
+        prompt_elements.append(f"<step_instructions>{step_instructions}</step_instructions>")
         
         user_prompt = "\n\n".join(prompt_elements)
 
@@ -243,7 +243,7 @@ class ReviewerAgent:
         Integer threshold for determining stagnation (e.g., 2 or 3 iterations without progress).
         </STAGNATION_THRESHOLD>
 
-        <iterations_since_last_significant_progress>
+        <iterations_no_progress>
         Integer count of iterations since the last time significant progress (new context gems) was made.
         </iterations_since_last_significant_progress>
 
@@ -311,9 +311,9 @@ class ReviewerAgent:
                 reasoning=f"Error during review processing: {type(e).__name__} - {str(e)}",
             )
             return ReviewerOut(
-                assessment_of_current_iteration="ERROR_IN_REVIEW_PROCESSING",
-                is_sufficient_for_synthesis=False,
-                context_to_use=None,
+                iteration_assessment="ERROR_IN_REVIEW_PROCESSING",
+                synthesis_ready=False,
+                selected_context=None,
                 next_iteration_guidance=default_guidance,
             )
 
@@ -334,7 +334,7 @@ class SynthesizerAgent:
         ```
         <parent_task>The main goal or problem to be solved.</parent_task>
 
-        <full_history_summary>
+        <process_history>
         --- Iteration 1 ---
         Plans & Responses: [JSON representation of ExplorationPlan objects for iteration 1]
         Review Assessment for this Iteration: Text assessment from the reviewer.
@@ -358,7 +358,7 @@ class SynthesizerAgent:
 
         Notes:
         - <parent_task> is always included.
-        - <full_history_summary> contains a structured text summary of each iteration,
+        - <process_history> contains a structured text summary of each iteration,
           including plans, responses, and reviewer feedback.
         - <selected_step_responses> is included if the final review identified specific step
           responses (ContextSelection) to be used for synthesis. It contains the actual text
@@ -366,14 +366,14 @@ class SynthesizerAgent:
         - The segments are joined by double newlines.
         ```
         """
-        full_history_summary_for_prompt, final_context_to_use = self._build_full_history_summary(full_history)
+        process_history_str, final_selected_context = self._build_full_history_summary(full_history)
         
         prompt_parts = [
             ("parent_task", parent_task),
-            ("full_history_summary", f"\n{full_history_summary_for_prompt}\n"),
+            ("full_history_summary", f"\n{process_history_str}\n"),
         ]
 
-        selected_responses_segment = self._build_selected_responses_segment(final_context_to_use, full_history)
+        selected_responses_segment = self._build_selected_responses_segment(final_selected_context, full_history)
         if selected_responses_segment:
             user_prompt = "\n\n".join([
                 _build_prompt_xml_style(prompt_parts),
@@ -397,7 +397,7 @@ class SynthesizerAgent:
 
     def _build_full_history_summary(self, full_history: List[Dict[str, Any]]) -> Tuple[str, Optional[List[ContextSelection]]]:
         history_summary_parts = []
-        final_context_to_use: Optional[List[ContextSelection]] = None
+        final_selected_context: Optional[List[ContextSelection]] = None
 
         for i, cycle in enumerate(full_history):
             cycle_summary = f"--- Iteration {i+1} ---\n"
@@ -407,24 +407,24 @@ class SynthesizerAgent:
 
             review_obj: Optional[ReviewerOut] = cycle.get('review')
             if review_obj:
-                cycle_summary += f"Review Assessment for this Iteration: {review_obj.assessment_of_current_iteration}\n"
+                cycle_summary += f"Review Assessment for this Iteration: {review_obj.iteration_assessment}\n"
                 if review_obj.next_iteration_guidance:
                     cycle_summary += f"Reviewer Guidance Action for Next Iteration: {review_obj.next_iteration_guidance.action}\n"
                     cycle_summary += f"Reviewer Reasoning: {review_obj.next_iteration_guidance.reasoning}\n"
                 if i == len(full_history) - 1:
-                    final_context_to_use = review_obj.context_to_use
+                    final_selected_context = review_obj.selected_context
             else:
                 cycle_summary += "Review: N/A\n"
             history_summary_parts.append(cycle_summary)
         
-        return "\n".join(history_summary_parts), final_context_to_use
+        return "\n".join(history_summary_parts), final_selected_context
 
     def _build_selected_responses_segment(
         self, 
-        final_context_to_use: Optional[List[ContextSelection]], 
+        final_selected_context: Optional[List[ContextSelection]], 
         full_history: List[Dict[str, Any]]
     ) -> Optional[str]:
-        if not final_context_to_use:
+        if not final_selected_context:
             return None
 
         all_step_responses: Dict[str, str] = {}
@@ -436,7 +436,7 @@ class SynthesizerAgent:
                     all_step_responses[key] = step_obj.response or "N/A"
         
         selected_responses_parts = ["<selected_step_responses>"]
-        for selection_group in final_context_to_use:
+        for selection_group in final_selected_context:
             plan_id = selection_group.plan_id
             for step_id in selection_group.step_ids:
                 q_step_id = f"{plan_id}.{step_id}"
@@ -451,14 +451,14 @@ class SynthesizerAgent:
     def synthesize(
         self, parent_task: str, full_history: List[Dict[str, Any]]
     ) -> str:
-        full_history_summary_for_prompt, final_context_to_use = self._build_full_history_summary(full_history)
+        process_history_str, final_selected_context = self._build_full_history_summary(full_history)
         
         prompt_parts = [
             ("parent_task", parent_task),
-            ("full_history_summary", f"\n{full_history_summary_for_prompt}\n"),
+            ("full_history_summary", f"\n{process_history_str}\n"),
         ]
 
-        selected_responses_segment = self._build_selected_responses_segment(final_context_to_use, full_history)
+        selected_responses_segment = self._build_selected_responses_segment(final_selected_context, full_history)
         if selected_responses_segment:
             user_prompt = "\n\n".join([
                 _build_prompt_xml_style(prompt_parts),
@@ -555,15 +555,15 @@ class DeepThinkingPipeline:
             else:
                 guidance_text_parts.append("Warning: Target plan/step ID missing for DEEPEN/CONTINUE_DFS_PATH/RETRY action.")
 
-        if previous_review_guidance.suggested_modifications_or_focus:
-            guidance_text_parts.append(f"Suggested modifications or focus: {previous_review_guidance.suggested_modifications_or_focus}")
+        if previous_review_guidance.refinement_details:
+            guidance_text_parts.append(f"Suggested modifications or focus: {previous_review_guidance.refinement_details}")
         if action == "BROADEN":
             if previous_review_guidance.excluded_strategies:
                 guidance_text_parts.append(f"Excluded strategies: {', '.join(previous_review_guidance.excluded_strategies)}")
-            if previous_review_guidance.new_strategy_suggestion:
-                guidance_text_parts.append(f"New strategy suggestion: {previous_review_guidance.new_strategy_suggestion}")
-        if action == "CONTINUE_DFS_PATH" and previous_review_guidance.current_dfs_path_summary:
-            guidance_text_parts.append(f"Current DFS path summary: {previous_review_guidance.current_dfs_path_summary}")
+            if previous_review_guidance.suggested_strategy:
+                guidance_text_parts.append(f"New strategy suggestion: {previous_review_guidance.suggested_strategy}")
+        if action == "CONTINUE_DFS_PATH" and previous_review_guidance.dfs_path_summary:
+            guidance_text_parts.append(f"Current DFS path summary: {previous_review_guidance.dfs_path_summary}")
         
         return "\n".join(guidance_text_parts)
 
@@ -623,7 +623,7 @@ class DeepThinkingPipeline:
                     
                     # Always pass the parent_task to the thinker
                     step_obj.response = self.thinker.think(
-                        your_task_description=step_obj.instructions,
+                        step_instructions=step_obj.instructions,
                         dependency_outputs_context=dependency_outputs_context_str if step_obj.dependencies else None,
                         overall_parent_task_context=parent_task
                     )
@@ -698,10 +698,10 @@ class DeepThinkingPipeline:
             next_guidance = review_obj.next_iteration_guidance
             previous_review_guidance = next_guidance
 
-            _log_agent_activity("ReviewerAgent", "Assessment", review_obj.assessment_of_current_iteration, color=BColors.OKGREEN)
+            _log_agent_activity("ReviewerAgent", "Assessment", review_obj.iteration_assessment, color=BColors.OKGREEN)
             _log_agent_activity("ReviewerAgent", f"Next Action: {next_guidance.action}", f"Reason: {next_guidance.reasoning}", color=BColors.BOLD)
 
-            if review_obj.context_to_use:
+            if review_obj.selected_context:
                 iterations_since_last_significant_progress = 0
                 _log_agent_activity("Pipeline", "Significant progress detected (new gems found). Resetting stagnation counter.", "", color=BColors.OKCYAN)
             else:
@@ -709,8 +709,8 @@ class DeepThinkingPipeline:
                 _log_agent_activity("Pipeline", f"No new gems. Iterations since last significant progress: {iterations_since_last_significant_progress}", "", color=BColors.OKCYAN)
 
             if next_guidance.action in ["HALT_SUFFICIENT", "HALT_STAGNATION", "HALT_NO_FEASIBLE_PATH"] or \
-               review_obj.assessment_of_current_iteration == "ERROR_IN_REVIEW_PROCESSING":
-                halt_reason = next_guidance.action if review_obj.assessment_of_current_iteration != "ERROR_IN_REVIEW_PROCESSING" else "ERROR_IN_REVIEW_PROCESSING"
+               review_obj.iteration_assessment == "ERROR_IN_REVIEW_PROCESSING":
+                halt_reason = next_guidance.action if review_obj.iteration_assessment != "ERROR_IN_REVIEW_PROCESSING" else "ERROR_IN_REVIEW_PROCESSING"
                 _log_agent_activity("Pipeline", f"Process will STOP based on Reviewer: '{halt_reason}' after {current_iteration} iterations.", "", color=BColors.HEADER)
                 break
 

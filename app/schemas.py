@@ -53,13 +53,13 @@ class NextIterationGuidance(BaseModel):
     reasoning: str
     target_plan_id: Optional[str] = None
     target_step_id: Optional[str] = None
-    suggested_modifications_or_focus: Optional[str] = None
+    refinement_details: Optional[str] = None
     excluded_strategies: Optional[List[str]] = None
-    new_strategy_suggestion: Optional[str] = None
-    current_dfs_path_summary: Optional[str] = None
+    suggested_strategy: Optional[str] = None
+    dfs_path_summary: Optional[str] = None
 
 class ReviewerOut(BaseModel):
-    assessment_of_current_iteration: str
-    is_sufficient_for_synthesis: bool
-    context_to_use: Optional[List[ContextSelection]] = None
+    iteration_assessment: str
+    synthesis_ready: bool
+    selected_context: Optional[List[ContextSelection]] = None
     next_iteration_guidance: NextIterationGuidance
