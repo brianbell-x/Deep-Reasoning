@@ -1,7 +1,7 @@
 # app/instructions.py
 
 """
-# --- Concise Prompt Engineering Guide For Agents ---
+# --- Guide For Agents Prompts ---
 
 ## 1. Define the Task (What & Why)
     *   **Be Explicit:** State the objective clearly and precisely.
@@ -27,7 +27,7 @@
     *   **Iterative Process:** Note if feedback/refinement is expected.
     *   **Transparency:** For calculations or data, require showing work (e.g., code and results).
 
-# --- Concise Guide for Exploration Strategy Prompts ---
+# --- Guide for Exploration Strategy Prompts ---
 
 # Use the structure: [PROBLEM, SEARCH PROCESS, SOLUTION]
 
