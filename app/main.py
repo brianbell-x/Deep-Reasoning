@@ -482,7 +482,7 @@ class SynthesizerAgent:
         _log_agent_activity("SynthesizerAgent", "Final Solution", response_str, color=BColors.OKGREEN)
         return response_str
 
-class DeepThinkingPipeline:
+class Orchestrator:
     MAX_ITERATIONS = 7
     STAGNATION_THRESHOLD = 2
 
@@ -750,10 +750,10 @@ def main():
                 print(f"{BColors.FAIL}Error writing critical exit error to log: {e}{BColors.ENDC}")
         sys.exit(1)
 
-    pipeline = DeepThinkingPipeline(
+    pipeline = Orchestrator(
         api_key=api_key,
-        max_iterations=DeepThinkingPipeline.MAX_ITERATIONS,
-        stagnation_threshold=DeepThinkingPipeline.STAGNATION_THRESHOLD,
+        max_iterations=Orchestrator.MAX_ITERATIONS,
+        stagnation_threshold=Orchestrator.STAGNATION_THRESHOLD,
     )
     pipeline.run(parent_task_input)
 

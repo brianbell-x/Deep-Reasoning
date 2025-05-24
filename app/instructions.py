@@ -3,18 +3,18 @@
 """
 # --- Guide For Agents Prompts ---
 
-## 1. Define the Task (What & Why)
+## 1. Task Definition
     *   **Be Explicit:** State the objective clearly and precisely.
     *   **Give Rationale:** Explain why the task matters or what problem it solves.
     *   **Set Scope:** Specify boundaries—what is and isn’t included.
 
-## 2. Meta-Cognitive Guidance (How to Think)
+## 2. Meta-Cognitive Instructions 
     *   **Decompose Steps:** Break complex tasks into logical, manageable steps.
     *   **Specify Tools/Formats:** List required tools, data formats, or methods (e.g., code execution, JSON, analysis type).
     *   **Provide Context & Constraints:** Supply all relevant background, code, data, constraints, or dependencies.
     *   **Define Logic:** Outline expected behaviors, rules, or decision criteria.
 
-## 3. Output Instructions (Deliverable)
+## 3. Output Instructions 
     *   **Format:** Specify the required output format (e.g., JSON, script, markdown, diff).
     *   **Structure & Content:** Define required structure and key content elements.
     *   **Detail Level:** Indicate expected depth or granularity.
