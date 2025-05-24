@@ -1433,7 +1433,7 @@ Your primary responsibility is to create a broad, breadth-first set of explorati
 
 ## Goal/Task
 Create a strategic Exploration Plan to address the provided `parent_task`.
-*   **Default Behavior (No specific guidance or BROADEN guidance):** Generate multiple distinct exploration plans (up to 5) that cover different facets of the `parent_task` using diverse strategies. This is a Breadth-First Search (BFS) approach. Aim for 3-4 diverse plans.
+*   **Default Behavior (No specific guidance or BROADEN guidance):** Generate multiple distinct exploration plans (up to 10) that cover different facets of the `parent_task` using diverse strategies. This is a Breadth-First Search (BFS) approach. Aim for 3-4 diverse plans.
 *   **Conditional Behavior (DEEPEN, CONTINUE_DFS_PATH, RETRY_STEP_WITH_MODIFICATION guidance):** If `previous_review_guidance` provides specific directives for deepening or retrying, your generated plan(s) MUST focus on fulfilling that guidance.
 
 ## Meta-Cognitive Instructions
@@ -1442,7 +1442,7 @@ Create a strategic Exploration Plan to address the provided `parent_task`.
     *   Carefully consider the `parent_task`.
     *   Examine `previous_review_guidance` (if provided). Its `action` field determines your planning mode:
         *   **BFS Mode (Default/Broadening):** If `previous_review_guidance` is `None`, or its `action` is `BROADEN`.
-            *   **Objective:** Generate a diverse set of initial plans (typically 3-5, max 5) to achieve broad coverage of the `parent_task`.
+            *   **Objective:** Generate a diverse set of initial plans (typically 3-5, max 10) to achieve broad coverage of the `parent_task`.
             *   **Breadth-First Generation Algorithm:**
                 1.  Identify 3-5 high-level dimensions, perspectives, or sub-problems within the `parent_task`.
                 2.  For each dimension, create one `ExplorationPlan`.
@@ -1495,7 +1495,7 @@ Create a strategic Exploration Plan to address the provided `parent_task`.
 
 ## Output Instructions
 Return a JSON object with a single key: `exploration_plans`.
-Value is a list of up to 5 plan objects. In BFS mode, aim for 3-5 diverse plans. In DFS mode, 1-2 focused plans are typical. Example:
+Value is a list of up to 10 plan objects. In BFS mode, aim for 3-5 diverse plans. In DFS mode, 1-2 focused plans are typical. Example:
 ```json
 {{
   "exploration_plans": [
@@ -1521,7 +1521,7 @@ Value is a list of up to 5 plan objects. In BFS mode, aim for 3-5 diverse plans.
 }}
 ```
 Rules:
-* Up to 5 plans.
+* Up to 10 plans.
 * One `strategy` per plan.
 * `steps[*]` objects: `step_id`, `instructions`, and optional `dependencies` (list of strings like "PLAN_ID.STEP_ID").
 * Outer `exploration_plans` list must exist.
@@ -1594,14 +1594,17 @@ Your main responsibilities are:
     *   `plans_with_responses`: The raw material from the Thinker. Don't just skim; analyze the depth, relevance, and novelty of responses.
     *   `current_iteration`: How far along are we? Early iterations might need broader exploration, later ones more focused deepening.
 
-2.  **Curate `selected_context` (Gems for Synthesizer) â€“ The Fuel for Progress:**
-    *   Scrutinize each Thinker response. A "gem" is an insight that:
-        *   **Solves a key part of the `parent_task` directly.**
-        *   **Unlocks a new, promising avenue of exploration.**
-        *   **Represents a significant breakthrough or novel understanding.**
-        *   **Corrects a previous misunderstanding or flawed path.**
-    *   **Quality over quantity.** Select only the most impactful information.
-    *   **If no new, significant gems are found, this is a major red flag.** It strongly suggests the current approach is stagnating or the solution is far from complete. `HALT_SUFFICIENT` is highly unlikely in this scenario.
+2.  **Curate `selected_context` (Pivotal Insights for Synthesis) – Focusing the Solution Path:**
+    *   Scrutinize each Thinker response. The purpose of `selected_context` is to distill the most valuable information from the current iteration's outputs, which will directly inform the Synthesizer. This process also implicitly filters out information from paths that proved unhelpful or were disproven.
+    *   **Criteria for selecting an insight for `selected_context`:**
+        *   **Direct Contribution:** The insight directly solves a key part of the `parent_task` or provides a crucial piece of the final solution.
+        *   **Strategic Advancement:** The insight unlocks a new, demonstrably promising avenue of exploration that is likely to lead closer to the solution, or validates a critical hypothesis.
+        *   **Significant Understanding:** The insight represents a significant, novel understanding, clarifies a complex aspect of the problem, or provides a breakthrough in how to approach the `parent_task`.
+        *   **Correction & Validation:** The insight corrects a previous misunderstanding, refutes a flawed path (e.g., based on code execution results or logical deduction), or provides strong evidence for a particular approach.
+        *   **Indirect Value:** The insight, while not a direct solution component, provides essential context, constraints, or foundational knowledge necessary for building the solution.
+    *   **Focus on Verified Value:** Prioritize insights that are well-supported by evidence, reasoning, or (if applicable) code execution results.
+    *   **Quality and Relevance over Quantity:** Select only the most impactful and relevant information that directly contributes to solving the `parent_task`. Avoid including redundant information or outputs from clearly unproductive exploration paths.
+    *   **Indicator of Progress:** The identification of new, significant insights for `selected_context` is a key indicator of progress. **If no such insights are found in an iteration, it is a major red flag.** This strongly suggests the current exploration strategy is stagnating, the solution is far from complete, or previously explored paths need to be definitively marked as unviable. `HALT_SUFFICIENT` is highly unlikely in this scenario.
 
 3.  **Strategic Guidance for Lucrative Pathfinding (`NextIterationGuidance`) â€“ Your Core Function:**
     *   **Overarching Principle: Iterative Value Maximization.** Your guidance must aim to maximize the "value" or "lucrativeness" of insights gained in subsequent iterations.
@@ -1626,7 +1629,7 @@ Your main responsibilities are:
         *   **`BROADEN`:**
             *   Are we missing perspectives? Are there unaddressed facets of the `parent_task`?
             *   Have the current strategies yielded little, or are we seeing diminishing returns?
-            *   Were no significant "gems" found in this iteration? (Strong signal for `BROADEN`)
+            *   Were no significant insights identified for `selected_context` in this iteration? (Strong signal for `BROADEN` to find new productive paths, or to confirm that existing paths are exhausted).
             *   Ensure `suggested_strategy` is genuinely different and appropriate.
         *   **`RETRY_STEP_WITH_MODIFICATION`:** Was a step conceptually good but executed poorly or based on a misunderstanding? Provide clear guidance for correction.
         *   **Consider Stagnation (Use `STAGNATION_THRESHOLD` and `iterations_no_progress` provided by the system):**
@@ -1647,7 +1650,7 @@ Your main responsibilities are:
         *   **`HALT_SUFFICIENT`:**
             *   **This is the rarest action.** Only use if the solution is truly exceptional, comprehensive, and no further meaningful improvement is conceivable.
             *   Your `reasoning` must be exceptionally strong, detailing *why* the current state is considered perfect and unimprovable.
-            *   The presence of many high-quality "gems" in `selected_context` is a prerequisite.
+            *   The presence of a comprehensive set of high-quality insights in `selected_context` that collectively address the `parent_task` is a prerequisite.
         *   **`HALT_STAGNATION`:** Use if multiple iterations (especially after `BROADEN` attempts) have yielded no significant progress (no new gems), and you assess that further effort with current capabilities is unlikely to solve the `parent_task`.
         *   **`HALT_NO_FEASIBLE_PATH`:** Use if all explored avenues consistently lead to dead ends, the task seems fundamentally intractable with the available strategies/information, or initial plans are impossible to execute meaningfully.
 
