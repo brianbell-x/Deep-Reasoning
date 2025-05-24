@@ -127,7 +127,7 @@ class PlannerAgent:
             prompt_parts.append(("review_guidance", review_guidance_str))
         user_prompt = _build_prompt_xml_style(prompt_parts)
 
-        _log_agent_activity("PlannerAgent", "Instructions (snippet)", self.INSTRUCTIONS, color=BColors.OKCYAN, snippet_length=500)
+        # _log_agent_activity("PlannerAgent", "Instructions (snippet)", self.INSTRUCTIONS, color=BColors.OKCYAN, snippet_length=500)
         _log_agent_activity("PlannerAgent", "User Prompt", user_prompt)
 
         try:
@@ -289,7 +289,7 @@ class ReviewerAgent:
         ]
         user_prompt = _build_prompt_xml_style(prompt_parts)
 
-        _log_agent_activity("ReviewerAgent", "Instructions (snippet)", self.INSTRUCTIONS, color=BColors.OKCYAN, snippet_length=500)
+        # _log_agent_activity("ReviewerAgent", "Instructions (snippet)", self.INSTRUCTIONS, color=BColors.OKCYAN, snippet_length=500)
         _log_agent_activity("ReviewerAgent", "User Prompt", user_prompt)
         
         try:
@@ -384,7 +384,7 @@ class SynthesizerAgent:
         else:
             user_prompt = _build_prompt_xml_style(prompt_parts)
 
-        _log_agent_activity("SynthesizerAgent", "Instructions (snippet)", self.INSTRUCTIONS, color=BColors.OKCYAN, snippet_length=500)
+        # _log_agent_activity("SynthesizerAgent", "Instructions (snippet)", self.INSTRUCTIONS, color=BColors.OKCYAN, snippet_length=500)
         _log_agent_activity("SynthesizerAgent", "User Prompt", user_prompt)
 
         response = self.client.synthesizer_call(
@@ -469,7 +469,7 @@ class SynthesizerAgent:
         else:
             user_prompt = _build_prompt_xml_style(prompt_parts)
 
-        _log_agent_activity("SynthesizerAgent", "Instructions (snippet)", self.INSTRUCTIONS, color=BColors.OKCYAN, snippet_length=500)
+        # _log_agent_activity("SynthesizerAgent", "Instructions (snippet)", self.INSTRUCTIONS, color=BColors.OKCYAN, snippet_length=500)
         _log_agent_activity("SynthesizerAgent", "User Prompt", user_prompt)
 
         response = self.client.synthesizer_call(
